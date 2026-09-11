@@ -90,6 +90,18 @@ public:
 	using EffectivenessMatrix = matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS>;
 	using ActuatorVector = matrix::Vector<float, NUM_ACTUATORS>;
 
+	/** Minimum interval for ordinary geometry updates, in microseconds. */
+	virtual uint32_t effectivenessUpdateIntervalUs() const { return 100000; }
+
+	/** Absolute row cutoff. Physical-scale models may need a smaller threshold. */
+	virtual float minimumControlAuthority() const { return 0.05f; }
+
+	/** Optional fixed geometry used for normalization on configuration updates. */
+	virtual bool getNormalizationReference(int, EffectivenessMatrix &) const { return false; }
+
+	/** Optional diagnostics after allocator-side failure masking and weak-row removal. */
+	virtual void effectivenessMatrixApplied(int, const EffectivenessMatrix &, uint16_t) {}
+
 	enum class FlightPhase {
 		HOVER_FLIGHT = 0,
 		FORWARD_FLIGHT = 1,

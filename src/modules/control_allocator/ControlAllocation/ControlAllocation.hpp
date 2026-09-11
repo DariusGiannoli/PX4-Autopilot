@@ -228,6 +228,9 @@ public:
 
 	void setNormalizeRPY(bool normalize_rpy) { _normalize_rpy = normalize_rpy; }
 
+	/** Optional reference for normalization; call after setEffectivenessMatrix(). */
+	virtual void setNormalizationReference(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &) {}
+
 protected:
 	friend class ControlAllocator; // for _actuator_sp
 

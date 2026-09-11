@@ -54,3 +54,7 @@ px4_add_module(
 		px4_work_queue
 		SlewRate
 )
+
+px4_add_functional_gtest(SRC ControlAllocatorMorphingTest.cpp
+	COMPILE_FLAGS -DMODULE_NAME=\"control_allocator_test\"
+	LINKLIBS modules__control_allocator ActuatorEffectiveness ControlAllocation)

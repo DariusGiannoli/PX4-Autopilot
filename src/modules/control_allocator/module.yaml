@@ -30,6 +30,7 @@ parameters:
                 10: Helicopter (tail ESC)
                 11: Helicopter (tail Servo)
                 12: Helicopter (Coaxial)
+                13: Morphing quadrotor (horizontal arms)
             default: 0
 
         CA_METHOD:
@@ -44,6 +45,37 @@ parameters:
                 1: Pseudo-inverse with sequential desaturation technique
                 2: Automatic
             default: 2
+
+        CA_MORPH_COGX:
+            description:
+                short: Morphing quad center of gravity X
+                long: Forward offset from CAD origin. Only used with CA_AIRFRAME=13.
+            type: float
+            unit: m
+            min: -0.1
+            max: 0.1
+            decimal: 4
+            default: 0.0
+        CA_MORPH_COGY:
+            description:
+                short: Morphing quad center of gravity Y
+                long: Right offset from CAD origin. Only used with CA_AIRFRAME=13.
+            type: float
+            unit: m
+            min: -0.1
+            max: 0.1
+            decimal: 4
+            default: 0.0
+        CA_MORPH_COGZ:
+            description:
+                short: Morphing quad center of gravity Z
+                long: Down offset from CAD origin. Vertical thrust makes this irrelevant to allocation torque.
+            type: float
+            unit: m
+            min: -0.1
+            max: 0.1
+            decimal: 4
+            default: 0.0
 
         # Motor parameters
         CA_R_REV:

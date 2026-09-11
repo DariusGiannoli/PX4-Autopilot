@@ -40,6 +40,8 @@
  */
 
 #include "ControlAllocator.hpp"
+#include <new>
+#include <stdlib.h>
 
 #include <drivers/drv_hrt.h>
 #include <circuit_breaker/circuit_breaker.h>
@@ -220,6 +222,10 @@ ControlAllocator::update_effectiveness_source()
 		case EffectivenessSource::NONE:
 		case EffectivenessSource::MULTIROTOR:
 			tmp = new ActuatorEffectivenessMultirotor(this);
+			break;
+
+		case EffectivenessSource::MORPHING_QUAD:
+			tmp = new ActuatorEffectivenessMorphingQuad(this);
 			break;
 
 		case EffectivenessSource::STANDARD_VTOL:
@@ -468,12 +474,15 @@ ControlAllocator::Run()
 void
 ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReason reason)
 {
-	ActuatorEffectiveness::Configuration config{};
-
 	if (reason == EffectivenessUpdateReason::NO_EXTERNAL_UPDATE
-	    && hrt_elapsed_time(&_last_effectiveness_update) < 100_ms) { // rate-limit updates
+	    && hrt_elapsed_time(&_last_effectiveness_update) < _actuator_effectiveness->effectivenessUpdateIntervalUs()) {
 		return;
 	}
+
+	// Value-initialize in place: assignment from {} creates a large temporary
+	// on this toolchain. No heap allocation occurs here, and no previous data survives.
+	new (&_effectiveness_update) EffectivenessUpdateBuffers{};
+	auto &config = _effectiveness_update.config;
 
 	if (_actuator_effectiveness->getEffectivenessMatrix(config, reason)) {
 		_last_effectiveness_update = hrt_absolute_time();
@@ -482,9 +491,9 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 		       sizeof(_control_allocation_selection_indexes));
 
 		// Get the minimum and maximum depending on type and configuration
-		ActuatorEffectiveness::ActuatorVector minimum[ActuatorEffectiveness::MAX_NUM_MATRICES];
-		ActuatorEffectiveness::ActuatorVector maximum[ActuatorEffectiveness::MAX_NUM_MATRICES];
-		ActuatorEffectiveness::ActuatorVector slew_rate[ActuatorEffectiveness::MAX_NUM_MATRICES];
+		auto &minimum = _effectiveness_update.minimum;
+		auto &maximum = _effectiveness_update.maximum;
+		auto &slew_rate = _effectiveness_update.slew_rate;
 		int actuator_idx = 0;
 		int actuator_idx_matrix[ActuatorEffectiveness::MAX_NUM_MATRICES] {};
 
@@ -572,12 +581,13 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 			// which in turn would degrade the control of the main axes that actually should and can be controlled.
 
 			ActuatorEffectiveness::EffectivenessMatrix &matrix = config.effectiveness_matrices[i];
+			const float minimum_authority = _actuator_effectiveness->minimumControlAuthority();
 
 			for (int n = 0; n < NUM_AXES; n++) {
 				bool all_entries_small = true;
 
 				for (int m = 0; m < config.num_actuators_matrix[i]; m++) {
-					if (fabsf(matrix(n, m)) > 0.05f) {
+					if (fabsf(matrix(n, m)) > minimum_authority) {
 						all_entries_small = false;
 					}
 				}
@@ -591,6 +601,17 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 			int total_num_actuators = config.num_actuators_matrix[i];
 			_control_allocation[i]->setEffectivenessMatrix(config.effectiveness_matrices[i], config.trim[i],
 					config.linearization_point[i], total_num_actuators, reason == EffectivenessUpdateReason::CONFIGURATION_UPDATE);
+
+			_actuator_effectiveness->effectivenessMatrixApplied(i, config.effectiveness_matrices[i],
+					_handled_motor_failure_bitmask);
+
+			if (reason == EffectivenessUpdateReason::CONFIGURATION_UPDATE) {
+				auto &reference = _effectiveness_update.normalization_reference;
+
+				if (_actuator_effectiveness->getNormalizationReference(i, reference)) {
+					_control_allocation[i]->setNormalizationReference(reference);
+				}
+			}
 		}
 
 		trims.timestamp = hrt_absolute_time();
@@ -845,7 +866,64 @@ int ControlAllocator::print_status()
 
 int ControlAllocator::custom_command(int argc, char *argv[])
 {
-	return print_usage("unknown command");
+	if (argc < 1 || strcmp(argv[0], "morphing_test") != 0) {
+		return print_usage("unknown command");
+	}
+
+	// ModuleBase holds the module mutex while dispatching custom commands.
+	ControlAllocator *instance = get_instance();
+
+	if (!instance) {
+		PX4_ERR("Control allocator must be running");
+		return PX4_ERROR;
+	}
+
+	return instance->publishTestAngles(argc, argv);
+}
+
+int ControlAllocator::publishTestAngles(int argc, char *argv[])
+{
+	if (argc != 5) {
+		PX4_ERR("Usage: control_allocator morphing_test FR RR RL FL (degrees, +/-30)");
+		return PX4_ERROR;
+	}
+
+	morphing_arm_state_s state{};
+
+	for (int i = 0; i < 4; ++i) {
+		char *end = nullptr;
+		const float degrees = strtof(argv[i + 1], &end);
+
+		if (end == argv[i + 1] || *end != '\0' || !PX4_ISFINITE(degrees) || fabsf(degrees) > 30.f) {
+			PX4_ERR("Each angle must be a finite number in [-30, 30] degrees");
+			return PX4_ERROR;
+		}
+
+		state.angle[i] = math::radians(degrees);
+	}
+
+	int32_t airframe = 0;
+	param_get(param_find("CA_AIRFRAME"), &airframe);
+	vehicle_status_s status{};
+	uORB::Subscription status_sub{ORB_ID(vehicle_status)};
+
+	if (airframe != 13 || !status_sub.copy(&status) || status.timestamp == 0
+	    || hrt_elapsed_time(&status.timestamp) > 2_s
+	    || status.arming_state != vehicle_status_s::ARMING_STATE_DISARMED) {
+		PX4_ERR("Test requires CA_AIRFRAME=13 and a current disarmed vehicle status");
+		return PX4_ERROR;
+	}
+
+	state.timestamp = hrt_absolute_time();
+	if (!_morphing_test_pub.publish(state)) {
+		PX4_ERR("Arm angle publication failed");
+		return PX4_ERROR;
+	}
+
+	PX4_INFO("Published simulated FR RR RL FL angles [rad]: %.6f %.6f %.6f %.6f",
+		 (double)state.angle[0], (double)state.angle[1], (double)state.angle[2], (double)state.angle[3]);
+	PX4_INFO("No servo movement. Restore neutral with: control_allocator morphing_test 0 0 0 0");
+	return PX4_OK;
 }
 
 int ControlAllocator::print_usage(const char *reason)
@@ -863,6 +941,7 @@ as inputs and outputs actuator setpoint messages.
 
 	PRINT_MODULE_USAGE_NAME("control_allocator", "controller");
 	PRINT_MODULE_USAGE_COMMAND("start");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("morphing_test", "Publish simulated FR RR RL FL angles in degrees (disarmed only)");
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
 	return 0;

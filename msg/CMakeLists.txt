@@ -146,6 +146,9 @@ set(msg_files
 	MissionResult.msg
 	MountOrientation.msg
 	ModeCompleted.msg
+	MorphingGeometry.msg
+	MorphingAllocationMatrix.msg
+	MorphingArmState.msg
 	NavigatorMissionItem.msg
 	NormalizedUnsignedSetpoint.msg
 	NpfgStatus.msg

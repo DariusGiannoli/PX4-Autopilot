@@ -50,6 +50,9 @@ px4_add_library(ActuatorEffectiveness
 	ActuatorEffectivenessMCTilt.hpp
 	ActuatorEffectivenessMultirotor.cpp
 	ActuatorEffectivenessMultirotor.hpp
+	ActuatorEffectivenessMorphingQuad.cpp
+	ActuatorEffectivenessMorphingQuad.hpp
+	MorphingQuadGeometry.hpp
 	ActuatorEffectivenessTilts.cpp
 	ActuatorEffectivenessTilts.hpp
 	ActuatorEffectivenessRotors.cpp
@@ -73,3 +76,4 @@ target_link_libraries(ActuatorEffectiveness
 
 px4_add_functional_gtest(SRC ActuatorEffectivenessHelicopterTest.cpp LINKLIBS ActuatorEffectiveness)
 px4_add_functional_gtest(SRC ActuatorEffectivenessRotorsTest.cpp LINKLIBS ActuatorEffectiveness)
+px4_add_functional_gtest(SRC ActuatorEffectivenessMorphingQuadTest.cpp LINKLIBS ActuatorEffectiveness ControlAllocation)

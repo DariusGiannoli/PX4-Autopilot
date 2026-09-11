@@ -54,6 +54,18 @@ ControlAllocationPseudoInverse::setEffectivenessMatrix(
 }
 
 void
+ControlAllocationPseudoInverse::setNormalizationReference(
+	const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &reference)
+{
+	if (!_had_actuator_failure) {
+		matrix::geninv(reference, _mix);
+		updateControlAllocationMatrixScale();
+		_normalization_needs_update = false;
+		_mix_update_needed = true; // allocate() must invert the actual geometry next.
+	}
+}
+
+void
 ControlAllocationPseudoInverse::updatePseudoInverse()
 {
 	if (_mix_update_needed) {

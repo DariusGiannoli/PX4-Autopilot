@@ -43,6 +43,7 @@
 
 #include <ActuatorEffectiveness.hpp>
 #include <ActuatorEffectivenessMultirotor.hpp>
+#include <ActuatorEffectivenessMorphingQuad.hpp>
 #include <ActuatorEffectivenessStandardVTOL.hpp>
 #include <ActuatorEffectivenessTiltrotorVTOL.hpp>
 #include <ActuatorEffectivenessTailsitterVTOL.hpp>
@@ -111,6 +112,7 @@ public:
 	bool init();
 
 private:
+	friend class ControlAllocatorMorphingTestPeer;
 
 	struct ParamHandles {
 		param_t slew_rate_motors[MAX_NUM_MOTORS];
@@ -143,6 +145,16 @@ private:
 	int _num_control_allocation{0};
 	hrt_abstime _last_effectiveness_update{0};
 
+	// Reuse large update buffers in the module object, not on the rate-control work-queue stack.
+	struct EffectivenessUpdateBuffers {
+		ActuatorEffectiveness::Configuration config;
+		ActuatorEffectiveness::EffectivenessMatrix normalization_reference;
+		ActuatorVector minimum[ActuatorEffectiveness::MAX_NUM_MATRICES];
+		ActuatorVector maximum[ActuatorEffectiveness::MAX_NUM_MATRICES];
+		ActuatorVector slew_rate[ActuatorEffectiveness::MAX_NUM_MATRICES];
+	};
+	EffectivenessUpdateBuffers _effectiveness_update{};
+
 	enum class EffectivenessSource {
 		NONE = -1,
 		MULTIROTOR = 0,
@@ -158,6 +170,7 @@ private:
 		HELICOPTER_TAIL_ESC = 10,
 		HELICOPTER_TAIL_SERVO = 11,
 		HELICOPTER_COAXIAL = 12,
+		MORPHING_QUAD = 13,
 	};
 
 	enum class FailureMode {
@@ -177,6 +190,11 @@ private:
 
 	uORB::Subscription _vehicle_torque_setpoint1_sub{ORB_ID(vehicle_torque_setpoint), 1};  /**< vehicle torque setpoint subscription (2. instance) */
 	uORB::Subscription _vehicle_thrust_setpoint1_sub{ORB_ID(vehicle_thrust_setpoint), 1};	 /**< vehicle thrust setpoint subscription (2. instance) */
+
+	int publishTestAngles(int argc, char *argv[]);
+
+	// Owned by the running allocator: a console task exiting must not unadvertise it.
+	uORB::Publication<morphing_arm_state_s> _morphing_test_pub{ORB_ID(morphing_arm_state)};
 
 	// Outputs
 	uORB::PublicationMulti<control_allocator_status_s> _control_allocator_status_pub[2] {ORB_ID(control_allocator_status), ORB_ID(control_allocator_status)};
