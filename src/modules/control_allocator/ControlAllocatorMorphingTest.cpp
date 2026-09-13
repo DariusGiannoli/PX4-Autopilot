@@ -122,4 +122,13 @@ TEST(ControlAllocatorMorphing, ConsoleTestPublishesAnglesAndRejectsUnsafeInputs)
 	for (float angle : state.angle) {
 		EXPECT_FLOAT_EQ(angle, 0.f);
 	}
+	const param_t publisher_enable = param_find("MORPH_PUB_EN");
+	if (publisher_enable != PARAM_INVALID) {
+		int32_t enabled = 1;
+		ASSERT_EQ(param_set(publisher_enable, &enabled), 0);
+		EXPECT_NE(ControlAllocatorMorphingTestPeer::publishTestAngles(module, 5, neutral_args), 0);
+		EXPECT_FALSE(input_sub.update(&state));
+		enabled = 0;
+		ASSERT_EQ(param_set(publisher_enable, &enabled), 0);
+	}
 }

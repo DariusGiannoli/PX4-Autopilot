@@ -888,6 +888,15 @@ int ControlAllocator::publishTestAngles(int argc, char *argv[])
 		return PX4_ERROR;
 	}
 
+	int32_t production_enabled = 0;
+	const param_t publisher_enable = param_find("MORPH_PUB_EN");
+	if (publisher_enable != PARAM_INVALID) { param_get(publisher_enable, &production_enabled); }
+
+	if (production_enabled != 0) {
+		PX4_ERR("Disable MORPH_PUB_EN before using simulated arm angles");
+		return PX4_ERROR;
+	}
+
 	morphing_arm_state_s state{};
 
 	for (int i = 0; i < 4; ++i) {

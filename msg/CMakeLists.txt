@@ -148,6 +148,7 @@ set(msg_files
 	ModeCompleted.msg
 	MorphingGeometry.msg
 	MorphingAllocationMatrix.msg
+	MorphingPublisherStatus.msg
 	MorphingArmState.msg
 	NavigatorMissionItem.msg
 	NormalizedUnsignedSetpoint.msg

@@ -11,3 +11,9 @@
 
 # DShot telemetry is always on UART7
 # dshot telemetry /dev/ttyS5
+
+# Opt-in command-to-angle bridge. Calibration is validated by the module.
+if param compare MORPH_PUB_EN 1
+then
+    morphing_arm_publisher start
+fi

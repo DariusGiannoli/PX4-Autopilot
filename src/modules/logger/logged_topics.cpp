@@ -46,6 +46,7 @@ using namespace px4::logger;
 void LoggedTopics::add_default_topics()
 {
 	add_optional_topic("morphing_arm_state");
+	add_optional_topic("morphing_publisher_status");
 	add_optional_topic("morphing_geometry");
 	add_optional_topic("morphing_allocation_matrix");
 	add_topic("action_request");

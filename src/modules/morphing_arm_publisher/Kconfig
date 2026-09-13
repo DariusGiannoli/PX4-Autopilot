@@ -1,0 +1,5 @@
+menuconfig MODULES_MORPHING_ARM_PUBLISHER
+	bool "morphing_arm_publisher"
+	default n
+	---help---
+		Publish calibrated horizontal arm angles from MAVLink actuator commands.

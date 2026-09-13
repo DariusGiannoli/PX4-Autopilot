@@ -12,8 +12,9 @@ The provider is registered in the build and selected explicitly with
 The provider inherits the multirotor's sequential-desaturation preference and RPY
 normalization. It creates four **motor** columns and no servo columns. Its only
 input from servo-driving code is the `morphing_arm_state` uORB topic.
-This deliverable contains no servo driver, laptop interface, board setup,
-calibration workflow, or changes to arming checks.
+The core provider does not drive servos. A separate opt-in MAVLink publisher is
+now available; see [its calibration and setup guide](../../src/modules/morphing_arm_publisher/README.md).
+It adds no arming interlock or position feedback.
 
 - `MorphingArmState.msg` carries accepted angles in radians in FR/RR/RL/FL order.
   Its producer must use those same angles for servo targets. It is an internal
@@ -48,9 +49,8 @@ behavior. Motor publication, clipping, slew limiting, failure-column removal,
 and the sequential-desaturation algorithm are reused.
 
 The listener is implemented inside PX4's actuator-effectiveness provider; no
-separate scheduled script is needed. A production publisher in the servo-driving
-code is not included: the functional tests publish representative driver angles
-through the real uORB topic to verify the interface.
+separate scheduled script is needed. The separate `morphing_arm_publisher` observes calibrated MAVLink actuator
+commands; the provider remains independent of the command transport.
 
 ## Interface
 
@@ -241,7 +241,8 @@ _arm_state_pub.publish(state);
 ```
 
 This is a producer-side integration example, not a second servo implementation.
-The actual servo-driving source must supply the four named variables. If it only
+A custom servo-driving source must supply the four named variables; the included
+MAVLink publisher performs the corresponding calibrated conversion for group 0. If it only
 exposes normalized outputs or PWM pulse widths, it must convert those values to
 arm angles using its own calibration before publishing. Raw PWM values cannot be
 interpreted as angles by the allocator.

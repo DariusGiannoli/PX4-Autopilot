@@ -1,0 +1,152 @@
+module_name: Morphing Arm Publisher
+parameters:
+    - group: Morphing Arms
+      definitions:
+        MORPH_PUB_EN:
+            description:
+                short: Enable calibrated MAVLink arm publisher
+                long: Enable only after measuring calibration and configuring matching peripheral outputs 1-4 in FR RR RL FL order. No RC AUX support or arming interlock. Disabling stops angle publication, not servo outputs.
+            type: boolean
+            default: 0
+        MORPH_PUB_TMO:
+            description:
+                short: Arm command stale timeout
+                long: Warn and require all four targets again after this interval without a valid arm update. Does not move servos or change the allocator hold-last policy. Restart publisher after changing.
+            type: float
+            unit: s
+            min: 0.1
+            max: 10.0
+            default: 1.0
+            reboot_required: true
+        MARM_FR_NEG:
+            description:
+                short: FR measured arm angle at command -1
+                long: Degrees from CAD neutral at normalized peripheral command -1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_FR_ZERO:
+            description:
+                short: FR measured arm angle at command 0
+                long: Degrees from CAD neutral at normalized peripheral command 0, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_FR_POS:
+            description:
+                short: FR measured arm angle at command +1
+                long: Degrees from CAD neutral at normalized peripheral command +1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_RR_NEG:
+            description:
+                short: RR measured arm angle at command -1
+                long: Degrees from CAD neutral at normalized peripheral command -1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_RR_ZERO:
+            description:
+                short: RR measured arm angle at command 0
+                long: Degrees from CAD neutral at normalized peripheral command 0, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_RR_POS:
+            description:
+                short: RR measured arm angle at command +1
+                long: Degrees from CAD neutral at normalized peripheral command +1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_RL_NEG:
+            description:
+                short: RL measured arm angle at command -1
+                long: Degrees from CAD neutral at normalized peripheral command -1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_RL_ZERO:
+            description:
+                short: RL measured arm angle at command 0
+                long: Degrees from CAD neutral at normalized peripheral command 0, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_RL_POS:
+            description:
+                short: RL measured arm angle at command +1
+                long: Degrees from CAD neutral at normalized peripheral command +1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_FL_NEG:
+            description:
+                short: FL measured arm angle at command -1
+                long: Degrees from CAD neutral at normalized peripheral command -1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_FL_ZERO:
+            description:
+                short: FL measured arm angle at command 0
+                long: Degrees from CAD neutral at normalized peripheral command 0, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
+        MARM_FL_POS:
+            description:
+                short: FL measured arm angle at command +1
+                long: Degrees from CAD neutral at normalized peripheral command +1, including output scaling and linkage. All three points must be strictly monotonic. Zero defaults are uncalibrated and prevent startup. Restart publisher after changing.
+            type: float
+            unit: deg
+            min: -30.0
+            max: 30.0
+            decimal: 3
+            default: 0.0
+            reboot_required: true
