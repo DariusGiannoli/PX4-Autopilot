@@ -113,3 +113,17 @@ partial/NaN updates, invalid inputs, replay rejection, monotonic publication,
 timeout/reinitialization, and real uORB commands through to the morphing
 provider's effectiveness matrix. Test calibrations are synthetic, not measurements
 for this aircraft. Also run the four existing morphing allocator regression suites.
+
+## Non-midpoint neutral
+
+MARM_FR_CTR, MARM_RR_CTR, MARM_RL_CTR, MARM_FL_CTR select the normalized
+command for the corresponding ZERO angle sample. Their default 0 preserves
+the previous behavior. NEG/POS are still samples at commands -1/+1; interpolation
+is piecewise through the configured center. Centers must be finite and strictly
+inside (-1,1). Restart after parameter changes. ZERO=0 makes the center the CAD
+neutral pose. Endpoint angles remain measured calibration inputs.
+
+For the 2026-09-13 screenshot, Sets 1/2/3/4 are MAIN 8/7/6/5. With PWM
+1000..2000, no reversal, and DIS 1500/1420/1550/1500 in set order, use
+CTR=[0,-0.16,0.10,0] and ZERO=[0,0,0,0]. The sender must use those same centers.
+This output assignment does not establish the actual physical arm identity.

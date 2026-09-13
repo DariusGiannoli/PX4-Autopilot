@@ -7,13 +7,15 @@ namespace morphing_publisher
 {
 struct Calibration {
 	float negative[4]{}; // measured degrees at normalized -1
-	float zero[4]{};     // measured degrees at normalized 0
+	float zero[4]{};     // measured degrees at center[arm]
 	float positive[4]{}; // measured degrees at normalized +1
+	float center[4]{};   // normalized command at middle calibration point
 
 	bool valid() const
 	{
 		for (unsigned i = 0; i < 4; ++i) {
-			if (!std::isfinite(negative[i]) || !std::isfinite(zero[i]) || !std::isfinite(positive[i])
+			if (!std::isfinite(center[i]) || std::fabs(center[i]) >= 1.f
+			    || !std::isfinite(negative[i]) || !std::isfinite(zero[i]) || !std::isfinite(positive[i])
 			    || std::fabs(negative[i]) > 30.f || std::fabs(zero[i]) > 30.f || std::fabs(positive[i]) > 30.f) {
 				return false;
 			}
@@ -29,8 +31,9 @@ struct Calibration {
 
 	float radians(unsigned arm, float value) const
 	{
-		const float degrees = value < 0.f ? zero[arm] + (-value) * (negative[arm] - zero[arm])
-				      : zero[arm] + value * (positive[arm] - zero[arm]);
+		const float degrees = value < center[arm]
+			? zero[arm] + (center[arm] - value) / (center[arm] + 1.f) * (negative[arm] - zero[arm])
+			: zero[arm] + (value - center[arm]) / (1.f - center[arm]) * (positive[arm] - zero[arm]);
 		return degrees * 0.017453292519943295f;
 	}
 };

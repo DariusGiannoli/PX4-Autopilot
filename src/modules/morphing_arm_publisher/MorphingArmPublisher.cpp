@@ -27,11 +27,11 @@ bool MorphingArmPublisher::configure()
 	}
 
 	const char *arms[] = {"FR", "RR", "RL", "FL"};
-	const char *points[] = {"NEG", "ZERO", "POS"};
-	float *destinations[] = {_calibration.negative, _calibration.zero, _calibration.positive};
+	const char *points[] = {"NEG", "ZERO", "POS", "CTR"};
+	float *destinations[] = {_calibration.negative, _calibration.zero, _calibration.positive, _calibration.center};
 
 	for (unsigned arm = 0; arm < 4; ++arm) {
-		for (unsigned point = 0; point < 3; ++point) {
+		for (unsigned point = 0; point < 4; ++point) {
 			char name[17];
 			snprintf(name, sizeof(name), "MARM_%s_%s", arms[arm], points[point]);
 			if (param_get(param_find(name), &destinations[point][arm]) != PX4_OK) { return false; }

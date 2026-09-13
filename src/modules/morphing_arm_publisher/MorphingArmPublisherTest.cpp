@@ -30,6 +30,7 @@ protected:
 			char name[17];
 			snprintf(name, sizeof(name), "MARM_%s_NEG", arm); setFloat(name, -30.f);
 			snprintf(name, sizeof(name), "MARM_%s_ZERO", arm); setFloat(name, 0.f);
+			snprintf(name, sizeof(name), "MARM_%s_CTR", arm); setFloat(name, 0.f);
 			snprintf(name, sizeof(name), "MARM_%s_POS", arm); setFloat(name, 30.f);
 		}
 	}
@@ -190,4 +191,29 @@ TEST_F(MorphingArmPublisherTest, QueueLossInvalidatesRetainedTargets)
 	EXPECT_FALSE(sub.update(&state));
 	EXPECT_GT(MorphingArmPublisherTestPeer::status(module).queue_overruns, 0u);
 	EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
+}
+
+TEST_F(MorphingArmPublisherTest, ShiftedCenterPublishesNeutralAndCorrectTravel)
+{
+    setFloat("MARM_RR_CTR", -.16f);
+    setFloat("MARM_RL_CTR", .1f);
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    uORB::Subscription sub{ORB_ID(morphing_arm_state)};
+    morphing_arm_state_s state{};
+    MorphingArmPublisherTestPeer::process(module, command(10, 0.f, -.16f, .1f, 0.f), 11);
+    ASSERT_TRUE(sub.update(&state));
+    for (float angle : state.angle) { EXPECT_NEAR(angle, 0.f, 1e-7f); }
+    // 40% of each center-to-positive-endpoint span is +12 degrees.
+    MorphingArmPublisherTestPeer::process(module, command(12, .4f, .304f, .46f, .4f), 13);
+    ASSERT_TRUE(sub.update(&state));
+    for (float angle : state.angle) { EXPECT_NEAR(angle, .20943951f, 1e-7f); }
+    MorphingArmPublisherTestPeer::process(module, command(14, -1.f, -1.f, -1.f, -1.f), 15);
+    ASSERT_TRUE(sub.update(&state));
+    for (float angle : state.angle) { EXPECT_NEAR(angle, -.523598776f, 1e-7f); }
+    setFloat("MARM_RR_CTR", 1.f);
+    EXPECT_FALSE(MorphingArmPublisherTestPeer::configure(module));
+    setFloat("MARM_RR_CTR", NAN);
+    EXPECT_FALSE(MorphingArmPublisherTestPeer::configure(module));
 }
