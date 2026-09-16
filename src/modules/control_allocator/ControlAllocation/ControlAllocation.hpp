@@ -228,6 +228,9 @@ public:
 
 	void setNormalizeRPY(bool normalize_rpy) { _normalize_rpy = normalize_rpy; }
 
+	/** Optional numerical scaling; supported by the pseudoinverse allocators. */
+	virtual void setUseRowScaledInverse(bool) {}
+
 	/** Optional reference for normalization; call after setEffectivenessMatrix(). */
 	virtual void setNormalizationReference(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &) {}
 

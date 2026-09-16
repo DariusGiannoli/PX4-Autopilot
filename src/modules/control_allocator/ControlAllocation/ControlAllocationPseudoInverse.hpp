@@ -54,6 +54,7 @@ public:
 	virtual ~ControlAllocationPseudoInverse() = default;
 
 	void allocate() override;
+	void setUseRowScaledInverse(bool enabled) override;
 	void setNormalizationReference(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &reference) override;
 	void setEffectivenessMatrix(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &effectiveness,
 				    const ActuatorVector &actuator_trim, const ActuatorVector &linearization_point, int num_actuators,
@@ -71,7 +72,10 @@ protected:
 	void updatePseudoInverse();
 
 private:
+	void computeInverse(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &effectiveness);
+	bool computeRowScaledQuadInverse(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &effectiveness);
 	void normalizeControlAllocationMatrix();
 	void updateControlAllocationMatrixScale();
 	bool _normalization_needs_update{false};
+	bool _use_row_scaled_inverse{false};
 };

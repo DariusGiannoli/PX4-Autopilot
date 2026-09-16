@@ -20,7 +20,48 @@ public:
 	{
 		return module._effectiveness_update.config;
 	}
+	static ControlAllocation &allocator(ControlAllocator &module) { return *module._control_allocation[0]; }
 };
+
+TEST(ControlAllocatorMorphing, MorphingSelectionEnablesAccurateInverse)
+{
+	param_control_autosave(false);
+	int32_t airframe = 13, count = 4, airmode = 2;
+	ASSERT_EQ(param_set(param_find("CA_AIRFRAME"), &airframe), 0);
+	ASSERT_EQ(param_set(param_find("CA_ROTOR_COUNT"), &count), 0);
+	ASSERT_EQ(param_set(param_find("MC_AIRMODE"), &airmode), 0);
+
+	for (int motor = 0; motor < 4; ++motor) {
+		char name[17];
+		float ct = 1.f, km = motor < 2 ? 0.006f : -0.006f;
+		snprintf(name, sizeof(name), "CA_ROTOR%d_CT", motor);
+		ASSERT_EQ(param_set(param_find(name), &ct), 0);
+		snprintf(name, sizeof(name), "CA_ROTOR%d_KM", motor);
+		ASSERT_EQ(param_set(param_find(name), &km), 0);
+	}
+
+	uORB::Publication<morphing_arm_state_s> input{ORB_ID(morphing_arm_state)};
+	morphing_arm_state_s state{};
+	state.timestamp = 1;
+	state.angle[0] = state.angle[1] = state.angle[2] = 0.523598775598f;
+	state.angle[3] = -0.523598775598f;
+	ASSERT_TRUE(input.publish(state));
+
+	for (int32_t method = 0; method <= 1; ++method) {
+		ASSERT_EQ(param_set(param_find("CA_METHOD"), &method), 0);
+		ControlAllocator module;
+		auto &allocator = ControlAllocatorMorphingTestPeer::allocator(module);
+		ControlAllocation::ActuatorVector expected;
+		expected(0) = 0.3f; expected(1) = 0.65f; expected(2) = 0.5f; expected(3) = 0.4f;
+		allocator.setActuatorSetpoint(expected);
+		allocator.setControlSetpoint(allocator.getAllocatedControl());
+		allocator.allocate();
+
+		for (int motor = 0; motor < 4; ++motor) {
+			EXPECT_NEAR(allocator.getActuatorSetpoint()(motor), expected(motor), 1e-4f);
+		}
+	}
+}
 
 TEST(ControlAllocatorMorphing, SelectingAndReconfiguringUsesFreshBuffers)
 {

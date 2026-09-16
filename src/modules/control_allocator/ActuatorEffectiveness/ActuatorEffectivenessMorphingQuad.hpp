@@ -20,6 +20,7 @@ public:
 	void effectivenessMatrixApplied(int matrix_index, const EffectivenessMatrix &matrix, uint16_t failure_mask) override;
 	uint32_t effectivenessUpdateIntervalUs() const override { return 10000; } // at most 100 Hz
 	float minimumControlAuthority() const override { return 1e-6f; }
+	bool useRowScaledInverse() const override { return true; }
 	const char *name() const override { return "Morphing quadrotor"; }
 
 private:

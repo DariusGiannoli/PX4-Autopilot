@@ -96,6 +96,9 @@ public:
 	/** Absolute row cutoff. Physical-scale models may need a smaller threshold. */
 	virtual float minimumControlAuthority() const { return 0.05f; }
 
+	/** Opt in to row scaling for a full-rank, four-motor roll/pitch/yaw/Z matrix. */
+	virtual bool useRowScaledInverse() const { return false; }
+
 	/** Optional fixed geometry used for normalization on configuration updates. */
 	virtual bool getNormalizationReference(int, EffectivenessMatrix &) const { return false; }
 

@@ -382,7 +382,7 @@ Run the check against the actual configured ARM build (not the desktop build):
 python3 Tools/morphing_quad_geometry/check_arm_stack.py --build-dir /path/to/arm-build
 ```
 
-It recompiles three translation units into a temporary directory with GCC's
+It recompiles four translation units into a temporary directory with GCC's
 `-fstack-usage`, checks the large frame and known nested paths, and reserves at
 least 512 bytes of headroom. This is a static regression check, not a full call-
 graph proof or measured hardware stack high-water mark. The new
@@ -429,3 +429,25 @@ command changed motor 0 roll/pitch entries from `-0.44094 / 0.44152` to
 zeros restored the neutral matrix and the listener displayed zero angles.
 This validates a simulated command through uORB to the allocator on the FC;
 no physical servo movement or flight was tested.
+
+## Numerical inverse scaling
+
+The morphing provider opts into numerical row scaling for both the actual matrix
+and its neutral normalization reference. The four active rows (roll, pitch, yaw,
+vertical thrust) are divided by their respective largest absolute entries before
+calling the existing float `matrix::geninv` on a compact 4x4 matrix. Its inverse
+is then converted back to physical units before the existing PX4 normalization.
+This prevents the much larger thrust coefficients from degrading the small
+physical torque coefficients during inversion. No geometry, parameter, motor
+ordering, update-rate, desaturation, clipping, or servo logic is changed.
+
+Scaling is only accepted for a finite, four-motor matrix with zero lateral thrust
+and a full-rank active map, verified by the scaled inverse residual. Failed-motor,
+rank-deficient, unsupported, or numerically rejected cases use the original
+unscaled pseudoinverse. This preserves the original least-squares weighting in
+those cases. Other effectiveness providers do not enable this policy.
+
+The implementation uses fixed-size float matrices and adds no allocation in the
+update loop. The ARM stack check includes both the scaled and fallback paths
+during normalization and ordinary allocation. See [inverse validation results](INVERSE_VALIDATION.md)
+for the reproduced error, regression coverage, and target build measurements.

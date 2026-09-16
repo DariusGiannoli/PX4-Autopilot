@@ -4,6 +4,7 @@
 #include <ControlAllocationSequentialDesaturation.hpp>
 #include <uORB/Publication.hpp>
 #include <limits>
+#include <random>
 
 namespace
 {
@@ -79,9 +80,11 @@ TEST_F(MorphingAllocationTest, NeutralConfigurationAndDefaultPolicies)
 	EXPECT_TRUE(b.isAllFinite());
 	EXPECT_FLOAT_EQ((b.slice<6, 12>(0, 4).norm()), 0.f);
 	EXPECT_EQ(provider.effectivenessUpdateIntervalUs(), 10000u);
+	EXPECT_TRUE(provider.useRowScaledInverse());
 	ActuatorEffectivenessMultirotor standard(nullptr);
 	EXPECT_EQ(standard.effectivenessUpdateIntervalUs(), 100000u);
 	EXPECT_FLOAT_EQ(standard.minimumControlAuthority(), 0.05f);
+	EXPECT_FALSE(standard.useRowScaledInverse());
 	ActuatorEffectiveness::EffectivenessMatrix reference;
 	EXPECT_FALSE(standard.getNormalizationReference(0, reference));
 	ASSERT_TRUE(provider.getNormalizationReference(0, reference));
@@ -148,6 +151,7 @@ TEST_F(MorphingAllocationTest, MovingGeometryUsesNeutralNormalization)
 	TestAllocator allocator;
 	allocator.updateParameters();
 	allocator.setNormalizeRPY(true);
+	allocator.setUseRowScaledInverse(provider.useRowScaledInverse());
 	ControlAllocation::ActuatorVector trim;
 	allocator.setEffectivenessMatrix(neutral.effectiveness_matrices[0], trim, trim, 4, true);
 	ActuatorEffectiveness::EffectivenessMatrix reference;
@@ -201,6 +205,91 @@ TEST_F(MorphingAllocationTest, MovingGeometryUsesNeutralNormalization)
 	allocator.allocate();
 	EXPECT_TRUE(allocator.scale() == original_scale);
 	EXPECT_TRUE(allocator.getActuatorSetpoint().isAllFinite());
+}
+TEST_F(MorphingAllocationTest, RecoversFeasibleMotorCommandsAcrossFoldingRange)
+{
+	std::mt19937 rng(20260916);
+	std::uniform_real_distribution<float> angle(-morphing_quad::MAX_ANGLE_RAD, morphing_quad::MAX_ANGLE_RAD);
+	std::uniform_real_distribution<float> motor_value(0.2f, 0.7f);
+
+	for (int profile = 0; profile < 3; ++profile) {
+		const float thrust = profile == 1 ? 6.5f : 1.f;
+		const float moment = profile == 1 ? 0.05f : 0.006f;
+		morphing_quad::RotorValues ct{{thrust, thrust, thrust, thrust}};
+		morphing_quad::RotorValues km{{moment, -moment, moment, -moment}};
+		matrix::Vector3f cog;
+
+		if (profile == 2) {
+			ct = {{0.8f, 1.1f, 1.2f, 0.9f}};
+			cog = matrix::Vector3f(0.009f, -0.007f, 0.f);
+		}
+
+		auto make_matrix = [&](const morphing_quad::RotorValues &q) {
+			morphing_quad::GeometryResult geometry{};
+			EXPECT_TRUE(morphing_quad::compute(q, ct, km, {{cog(0), cog(1), cog(2)}}, geometry));
+			ActuatorEffectiveness::EffectivenessMatrix b;
+
+			for (int row = 0; row < 6; ++row) {
+				for (int motor = 0; motor < 4; ++motor) { b(row, motor) = geometry.effectiveness[row][motor]; }
+			}
+
+			return b;
+		};
+
+		const auto reference = make_matrix({});
+		TestAllocator allocator;
+		allocator.updateParameters();
+		allocator.setNormalizeRPY(true);
+		allocator.setUseRowScaledInverse(true);
+		ControlAllocation::ActuatorVector trim;
+		allocator.setEffectivenessMatrix(reference, trim, trim, 4, true);
+		allocator.setNormalizationReference(reference);
+		const auto neutral_scale = allocator.scale();
+		float max_error = 0.f;
+
+		// All 81 combinations of -30/0/+30 degrees, then 5,000 seeded random geometries.
+		for (int sample = 0; sample < 5081; ++sample) {
+			morphing_quad::RotorValues q{};
+
+			for (int arm = 0, index = sample; arm < 4; ++arm, index /= 3) {
+				q[arm] = sample < 81 ? (index % 3 - 1) * morphing_quad::MAX_ANGLE_RAD : angle(rng);
+			}
+
+			const auto b = make_matrix(q);
+			ControlAllocation::ActuatorVector expected;
+
+			for (int motor = 0; motor < 4; ++motor) { expected(motor) = motor_value(rng); }
+
+			// A known feasible motor vector is an independent oracle: B*u must recover u.
+			const matrix::Vector<float, 6> command = (b * expected).emult(neutral_scale);
+			allocator.setEffectivenessMatrix(b, trim, trim, 4, false);
+			allocator.setControlSetpoint(command);
+			allocator.allocate();
+			ASSERT_TRUE(allocator.getActuatorSetpoint().isAllFinite());
+			EXPECT_TRUE(allocator.scale() == neutral_scale);
+
+			for (int motor = 0; motor < 4; ++motor) {
+				max_error = fmaxf(max_error, fabsf(allocator.getActuatorSetpoint()(motor) - expected(motor)));
+			}
+
+			// Infeasible commands still use the existing desaturation and clipping.
+			auto saturated = command;
+			saturated(0) += 3.f;
+			saturated(2) -= 2.f;
+			allocator.setControlSetpoint(saturated);
+			allocator.allocate();
+			allocator.clipActuatorSetpoint();
+			ASSERT_TRUE(allocator.getActuatorSetpoint().isAllFinite());
+
+			for (int motor = 0; motor < 4; ++motor) {
+				ASSERT_GE(allocator.getActuatorSetpoint()(motor), 0.f);
+				ASSERT_LE(allocator.getActuatorSetpoint()(motor), 1.f);
+			}
+		}
+
+		EXPECT_LT(max_error, 1e-4f) << "coefficient profile " << profile;
+		RecordProperty("max_motor_error_ppm_profile_" + std::to_string(profile), std::to_string(max_error * 1e6f));
+	}
 }
 } // namespace
 

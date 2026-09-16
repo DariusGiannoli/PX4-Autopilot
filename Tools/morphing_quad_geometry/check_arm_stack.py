@@ -19,7 +19,8 @@ def main():
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     entries = json.loads((args.build_dir / 'compile_commands.json').read_text())
-    targets = {'ControlAllocator.cpp', 'ActuatorEffectivenessMorphingQuad.cpp', 'ControlAllocationPseudoInverse.cpp'}
+    targets = {'ControlAllocator.cpp', 'ActuatorEffectivenessMorphingQuad.cpp',
+               'ControlAllocationPseudoInverse.cpp', 'ControlAllocationSequentialDesaturation.cpp'}
     records = []
     sources = set()
     with tempfile.TemporaryDirectory(prefix='morphing-stack-') as tmp:
@@ -41,8 +42,9 @@ def main():
                 function, size, kind = line.rsplit('\t', 2)
                 records.append((function, int(size), kind))
 
-    def frame(fragment):
-        found = [(size, kind) for name, size, kind in records if fragment in name]
+    def frame(fragment, specialization=''):
+        found = [(size, kind) for name, size, kind in records
+                 if fragment in name and specialization in name]
         if not found or any(kind != 'static' for _, kind in found):
             raise RuntimeError(f'Missing or non-static stack report: {fragment}')
         return max(size for size, _ in found)
@@ -55,9 +57,26 @@ def main():
         raise RuntimeError('Cannot read rate-control work-queue stack budget')
     budget = int(match.group(1))
     common = frame('ControlAllocator::Run()') + frame('ControlAllocator::parameters_updated()') + frame('ControlAllocator::update_effectiveness_matrix_if_needed(')
+    scaled_inverse = (frame('ControlAllocationPseudoInverse::computeRowScaledQuadInverse(')
+                      + frame('bool matrix::geninv(', 'M = 4;')
+                      + max(frame('matrix::fullRankCholesky(', 'N = 4]'),
+                            frame('bool matrix::inv(', 'M = 4]')))
+    legacy_inverse = (frame('bool matrix::geninv(', 'M = 6;')
+                      + max(frame('matrix::fullRankCholesky(', 'N = 6]'),
+                            frame('bool matrix::inv(', 'M = 6]')))
+    normalization = (common + frame('ControlAllocationPseudoInverse::setNormalizationReference(')
+                     + frame('ControlAllocationPseudoInverse::computeInverse('))
+    allocation = (frame('ControlAllocator::Run()')
+                  + max(frame('ControlAllocationPseudoInverse::allocate()'),
+                        frame('ControlAllocationSequentialDesaturation::allocate()'))
+                  + frame('ControlAllocationPseudoInverse::updatePseudoInverse()')
+                  + frame('ControlAllocationPseudoInverse::computeInverse('))
     paths = {
         'geometry_logging': common + frame('ActuatorEffectivenessMorphingQuad::getEffectivenessMatrix(') + frame('ActuatorEffectivenessMorphingQuad::publishGeometry(') + frame('ActuatorEffectivenessMorphingQuad::computeMatrix('),
-        'normalization_inverse': common + frame('ControlAllocationPseudoInverse::setNormalizationReference(') + frame('bool matrix::geninv(') + max(frame('matrix::fullRankCholesky('), frame('bool matrix::inv(')),
+        'normalization_scaled_inverse': normalization + scaled_inverse,
+        'normalization_legacy_inverse': normalization + legacy_inverse,
+        'allocation_scaled_inverse': allocation + scaled_inverse,
+        'allocation_legacy_inverse': allocation + legacy_inverse,
     }
     report = {'work_queue_stack_bytes': budget, 'update_function_frame_bytes': frame('ControlAllocator::update_effectiveness_matrix_if_needed('), 'audited_path_bytes': paths, 'reserved_headroom_bytes': 512,
               'limitation': 'Known nested frames only; reserve covers uncounted wrappers/library calls. Not proof of all runtime paths or interrupt behavior.'}

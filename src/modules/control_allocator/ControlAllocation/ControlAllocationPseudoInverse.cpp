@@ -42,6 +42,102 @@
 #include "ControlAllocationPseudoInverse.hpp"
 
 void
+ControlAllocationPseudoInverse::setUseRowScaledInverse(bool enabled)
+{
+	if (_use_row_scaled_inverse != enabled) {
+		_use_row_scaled_inverse = enabled;
+		_mix_update_needed = true;
+	}
+}
+
+bool
+ControlAllocationPseudoInverse::computeRowScaledQuadInverse(
+	const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &effectiveness)
+{
+	// Only a square map on the four active axes preserves the original solution
+	// under row scaling. In particular, do not reweight a failed-motor least-squares problem.
+	if (_num_actuators != 4 || _had_actuator_failure || !effectiveness.isAllFinite()) {
+		return false;
+	}
+
+	for (int motor = 0; motor < NUM_ACTUATORS; ++motor) {
+		for (int axis = 0; axis < NUM_AXES; ++axis) {
+			if ((motor >= 4 || axis == THRUST_X || axis == THRUST_Y) && fabsf(effectiveness(axis, motor)) > 0.f) {
+				return false;
+			}
+		}
+	}
+
+	// Compact fixed-size matrices avoid a second 6x16 buffer on the rate-control stack.
+	constexpr int axes[4] {ROLL, PITCH, YAW, THRUST_Z};
+	matrix::SquareMatrix<float, 4> scaled;
+	matrix::SquareMatrix<float, 4> inverse;
+	matrix::Vector<float, 4> row_scale;
+
+	for (int row = 0; row < 4; ++row) {
+		float largest = 0.f;
+
+		for (int motor = 0; motor < 4; ++motor) {
+			largest = fmaxf(largest, fabsf(effectiveness(axes[row], motor)));
+		}
+
+		if (largest <= FLT_MIN) {
+			return false;
+		}
+
+		row_scale(row) = 1.f / largest;
+
+		for (int motor = 0; motor < 4; ++motor) {
+			scaled(row, motor) = effectiveness(axes[row], motor) * row_scale(row);
+		}
+	}
+
+	if (!matrix::geninv(scaled, inverse) || !inverse.isAllFinite()) {
+		return false;
+	}
+
+	// geninv also accepts deficient rank. Require an actual inverse before changing
+	// units, otherwise keep PX4's original unscaled least-squares behavior.
+	for (int row = 0; row < 4; ++row) {
+		for (int col = 0; col < 4; ++col) {
+			float product = 0.f;
+
+			for (int k = 0; k < 4; ++k) { product += scaled(row, k) * inverse(k, col); }
+
+			if (!PX4_ISFINITE(product) || fabsf(product - (row == col ? 1.f : 0.f)) > 1e-4f) {
+				return false;
+			}
+		}
+	}
+
+	// Bs = S*B, so B^-1 = Bs^-1*S. Existing neutral normalization follows this.
+	for (int col = 0; col < 4; ++col) { inverse.col(col) *= row_scale(col); }
+
+	if (!inverse.isAllFinite()) {
+		return false;
+	}
+
+	_mix.setZero();
+
+	for (int motor = 0; motor < 4; ++motor) {
+		for (int col = 0; col < 4; ++col) { _mix(motor, axes[col]) = inverse(motor, col); }
+	}
+
+	return true;
+}
+
+void
+ControlAllocationPseudoInverse::computeInverse(
+	const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &effectiveness)
+{
+	if (_use_row_scaled_inverse && computeRowScaledQuadInverse(effectiveness)) {
+		return;
+	}
+
+	matrix::geninv(effectiveness, _mix);
+}
+
+void
 ControlAllocationPseudoInverse::setEffectivenessMatrix(
 	const matrix::Matrix<float, ControlAllocation::NUM_AXES, ControlAllocation::NUM_ACTUATORS> &effectiveness,
 	const ActuatorVector &actuator_trim, const ActuatorVector &linearization_point, int num_actuators,
@@ -58,7 +154,7 @@ ControlAllocationPseudoInverse::setNormalizationReference(
 	const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &reference)
 {
 	if (!_had_actuator_failure) {
-		matrix::geninv(reference, _mix);
+		computeInverse(reference);
 		updateControlAllocationMatrixScale();
 		_normalization_needs_update = false;
 		_mix_update_needed = true; // allocate() must invert the actual geometry next.
@@ -69,7 +165,7 @@ void
 ControlAllocationPseudoInverse::updatePseudoInverse()
 {
 	if (_mix_update_needed) {
-		matrix::geninv(_effectiveness, _mix);
+		computeInverse(_effectiveness);
 
 		if (_normalization_needs_update && !_had_actuator_failure) {
 			updateControlAllocationMatrixScale();
