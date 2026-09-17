@@ -451,3 +451,10 @@ The implementation uses fixed-size float matrices and adds no allocation in the
 update loop. The ARM stack check includes both the scaled and fallback paths
 during normalization and ordinary allocation. See [inverse validation results](INVERSE_VALIDATION.md)
 for the reproduced error, regression coverage, and target build measurements.
+
+## Direction-preserving saturation
+
+The morphing provider also opts into bounded roll/pitch-preserving saturation
+with Auto or sequential allocation. It corrects the folded-geometry torque
+reversal found after the inverse change. See [saturation validation](SATURATION_VALIDATION.md)
+for the priority policy, supported configurations, regressions, and hardware limits.

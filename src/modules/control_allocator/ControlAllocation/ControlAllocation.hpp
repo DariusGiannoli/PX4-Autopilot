@@ -231,6 +231,9 @@ public:
 	/** Optional numerical scaling; supported by the pseudoinverse allocators. */
 	virtual void setUseRowScaledInverse(bool) {}
 
+	/** Optional four-motor saturation policy; supported by sequential allocation. */
+	virtual void setUseDirectionPreservingSaturation(bool) {}
+
 	/** Optional reference for normalization; call after setEffectivenessMatrix(). */
 	virtual void setNormalizationReference(const matrix::Matrix<float, NUM_AXES, NUM_ACTUATORS> &) {}
 

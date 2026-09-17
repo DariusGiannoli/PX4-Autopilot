@@ -40,6 +40,156 @@
 
 #include "ControlAllocationSequentialDesaturation.hpp"
 
+namespace
+{
+/** Maximize s in [0,1] with 0 <= base[i] + direction[i]*s + thrust[i]*t <= maximum[i].
+ * All thrust coefficients are positive. Eliminate t by requiring every lower
+ * bound on t to be below every upper bound, including 0 <= t <= thrust_max.
+ * s=0 must be feasible. This is a fixed 25-inequality calculation, not an
+ * iterative optimizer. Among equal s, choose t nearest the preferred thrust.
+ */
+bool maximizeDirectionScale(const float base[4], const float direction[4], const float thrust[4],
+			    const float maximum[4], float thrust_max, float preferred_thrust, float &scale, float &collective)
+{
+	float lower[5] {}, upper[5] {}, slope[5] {};
+	upper[4] = thrust_max;
+
+	for (int motor = 0; motor < 4; ++motor) {
+		lower[motor] = -base[motor] / thrust[motor];
+		upper[motor] = (maximum[motor] - base[motor]) / thrust[motor];
+		slope[motor] = -direction[motor] / thrust[motor];
+	}
+
+	scale = 1.f;
+
+	for (int i = 0; i < 5; ++i) {
+		for (int j = 0; j < 5; ++j) {
+			const float available = upper[j] - lower[i];
+			const float change = slope[i] - slope[j];
+
+			if (available < -2e-5f) { return false; }
+
+			if (change > FLT_EPSILON) {
+				scale = fminf(scale, fmaxf(0.f, available) / change);
+			}
+		}
+	}
+
+	// Leave a few float ULPs at an active boundary so final clipping is roundoff only.
+	if (scale < 1.f) { scale = fmaxf(0.f, scale - 4.f * FLT_EPSILON); }
+
+	float low = 0.f, high = thrust_max;
+
+	for (int motor = 0; motor < 4; ++motor) {
+		low = fmaxf(low, lower[motor] + slope[motor] * scale);
+		high = fminf(high, upper[motor] + slope[motor] * scale);
+	}
+
+	if (!PX4_ISFINITE(low) || !PX4_ISFINITE(high) || low > high + 2e-5f) { return false; }
+
+	collective = fminf(fmaxf(preferred_thrust, fminf(low, high)), high);
+	return PX4_ISFINITE(scale) && PX4_ISFINITE(collective);
+}
+} // namespace
+
+bool ControlAllocationSequentialDesaturation::allocateDirectionPreserving()
+{
+	// Preserve the existing least-squares/failure behavior outside the supported
+	// full-rank vertical four-motor map. In particular, do not reweight a failed motor.
+	if (_num_actuators != 4 || _had_actuator_failure || !_mix.isAllFinite()
+	    || !_effectiveness.isAllFinite() || !_control_sp.isAllFinite()
+	    || fabsf(_control_sp(THRUST_X)) > 0.f || fabsf(_control_sp(THRUST_Y)) > 0.f) {
+		return false;
+	}
+
+	for (int motor = 0; motor < NUM_ACTUATORS; ++motor) {
+		for (int axis = 0; axis < NUM_AXES; ++axis) {
+			if ((motor >= 4 || axis == THRUST_X || axis == THRUST_Y) && fabsf(_effectiveness(axis, motor)) > 0.f) {
+				return false;
+			}
+		}
+	}
+
+	constexpr int axes[4] {ROLL, PITCH, YAW, THRUST_Z};
+
+	for (int row : axes) {
+		if (!PX4_ISFINITE(_control_allocation_scale(row)) || _control_allocation_scale(row) <= 0.f
+		    || fabsf(_control_trim(row)) > 0.f) { return false; }
+
+		for (int column : axes) {
+			float product = 0.f;
+
+			for (int motor = 0; motor < 4; ++motor) { product += _effectiveness(row, motor) * _mix(motor, column); }
+
+			product *= _control_allocation_scale(row);
+
+			if (!PX4_ISFINITE(product) || fabsf(product - (row == column ? 1.f : 0.f)) > 2e-4f) { return false; }
+		}
+	}
+
+	float thrust[4], rp[4], yaw[4], maximum[4], result[4];
+	float thrust_capacity = 0.f, zero_torque_capacity = INFINITY;
+	bool feasible = true;
+
+	for (int motor = 0; motor < 4; ++motor) {
+		thrust[motor] = -_mix(motor, THRUST_Z);
+		maximum[motor] = _actuator_max(motor);
+
+		if (!PX4_ISFINITE(_actuator_min(motor)) || !PX4_ISFINITE(_actuator_trim(motor))
+		    || fabsf(_actuator_min(motor)) > 0.f || fabsf(_actuator_trim(motor)) > 0.f
+		    || !PX4_ISFINITE(maximum[motor]) || maximum[motor] <= 0.f
+		    || thrust[motor] < 1e-6f || _effectiveness(THRUST_Z, motor) >= 0.f) { return false; }
+
+		rp[motor] = _mix(motor, ROLL) * _control_sp(ROLL) + _mix(motor, PITCH) * _control_sp(PITCH);
+		yaw[motor] = _mix(motor, YAW) * _control_sp(YAW);
+		result[motor] = rp[motor] + yaw[motor] - thrust[motor] * _control_sp(THRUST_Z);
+
+		if (!PX4_ISFINITE(result[motor]) || !PX4_ISFINITE(rp[motor]) || !PX4_ISFINITE(yaw[motor])) { return false; }
+
+		feasible &= result[motor] >= 0.f && result[motor] <= maximum[motor];
+		thrust_capacity -= _effectiveness(THRUST_Z, motor) * maximum[motor] * _control_allocation_scale(THRUST_Z);
+		zero_torque_capacity = fminf(zero_torque_capacity, maximum[motor] / thrust[motor]);
+	}
+
+	if (!PX4_ISFINITE(thrust_capacity) || !PX4_ISFINITE(zero_torque_capacity)) { return false; }
+
+	if (!feasible) {
+		const float requested = fmaxf(0.f, -_control_sp(THRUST_Z));
+		const int airmode = _param_mc_airmode.get();
+		const float thrust_max = (airmode == 1 || airmode == 2) ? thrust_capacity : fminf(requested, thrust_capacity);
+		float base[4] {};
+		float rp_scale = 0.f, collective = fminf(thrust_max, zero_torque_capacity);
+
+		if (!maximizeDirectionScale(base, rp, thrust, maximum, thrust_max, requested, rp_scale, collective)) {
+			// Numerical rejection: retain feasible zero-torque thrust, not the legacy
+			// desaturation sequence that can reverse the requested torque.
+			rp_scale = 0.f;
+			collective = fminf(thrust_max, zero_torque_capacity);
+		}
+
+		for (int motor = 0; motor < 4; ++motor) { base[motor] = rp[motor] * rp_scale; }
+
+		const float yaw_thrust_max = airmode == 2 ? thrust_max : collective;
+		float yaw_scale = 0.f, yaw_collective = collective;
+
+		if (!maximizeDirectionScale(base, yaw, thrust, maximum, yaw_thrust_max, collective, yaw_scale, yaw_collective)) {
+			yaw_scale = 0.f;
+			yaw_collective = collective;
+		}
+
+		for (int motor = 0; motor < 4; ++motor) {
+			result[motor] = base[motor] + yaw[motor] * yaw_scale + thrust[motor] * yaw_collective;
+		}
+	}
+
+	_actuator_sp.setZero();
+
+	for (int motor = 0; motor < 4; ++motor) {
+		_actuator_sp(motor) = fminf(fmaxf(result[motor], 0.f), maximum[motor]);
+	}
+
+	return true;
+}
 
 void
 ControlAllocationSequentialDesaturation::allocate()
@@ -48,6 +198,8 @@ ControlAllocationSequentialDesaturation::allocate()
 	updatePseudoInverse();
 
 	_prev_actuator_sp = _actuator_sp;
+
+	if (_direction_preserving_saturation && allocateDirectionPreserving()) { return; }
 
 	switch (_param_mc_airmode.get()) {
 	case 1:

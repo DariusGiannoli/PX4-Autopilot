@@ -600,6 +600,8 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 			// Assign control effectiveness matrix
 			int total_num_actuators = config.num_actuators_matrix[i];
 			_control_allocation[i]->setUseRowScaledInverse(_actuator_effectiveness->useRowScaledInverse());
+			_control_allocation[i]->setUseDirectionPreservingSaturation(
+				_actuator_effectiveness->useDirectionPreservingSaturation());
 			_control_allocation[i]->setEffectivenessMatrix(config.effectiveness_matrices[i], config.trim[i],
 					config.linearization_point[i], total_num_actuators, reason == EffectivenessUpdateReason::CONFIGURATION_UPDATE);
 

@@ -98,6 +98,7 @@ public:
 
 	/** Opt in to row scaling for a full-rank, four-motor roll/pitch/yaw/Z matrix. */
 	virtual bool useRowScaledInverse() const { return false; }
+	virtual bool useDirectionPreservingSaturation() const { return false; }
 
 	/** Optional fixed geometry used for normalization on configuration updates. */
 	virtual bool getNormalizationReference(int, EffectivenessMatrix &) const { return false; }

@@ -57,7 +57,11 @@ public:
 	void allocate() override;
 
 	void updateParameters() override;
+	void setUseDirectionPreservingSaturation(bool enabled) override { _direction_preserving_saturation = enabled; }
 private:
+	/** Full-rank, four vertical motors only; false selects the original allocator. */
+	bool allocateDirectionPreserving();
+	bool _direction_preserving_saturation{false};
 
 	/**
 	 * Minimize the saturation of the actuators by adding or substracting a fraction of desaturation_vector.

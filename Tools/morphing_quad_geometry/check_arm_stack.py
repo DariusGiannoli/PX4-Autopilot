@@ -77,6 +77,10 @@ def main():
         'normalization_legacy_inverse': normalization + legacy_inverse,
         'allocation_scaled_inverse': allocation + scaled_inverse,
         'allocation_legacy_inverse': allocation + legacy_inverse,
+        'direction_preserving_saturation': (frame('ControlAllocator::Run()')
+                                          + frame('ControlAllocationSequentialDesaturation::allocate()')
+                                          + frame('ControlAllocationSequentialDesaturation::allocateDirectionPreserving()')
+                                          + frame('maximizeDirectionScale(')),
     }
     report = {'work_queue_stack_bytes': budget, 'update_function_frame_bytes': frame('ControlAllocator::update_effectiveness_matrix_if_needed('), 'audited_path_bytes': paths, 'reserved_headroom_bytes': 512,
               'limitation': 'Known nested frames only; reserve covers uncounted wrappers/library calls. Not proof of all runtime paths or interrupt behavior.'}

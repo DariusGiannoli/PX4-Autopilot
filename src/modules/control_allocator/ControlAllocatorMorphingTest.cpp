@@ -173,3 +173,44 @@ TEST(ControlAllocatorMorphing, ConsoleTestPublishesAnglesAndRejectsUnsafeInputs)
 		ASSERT_EQ(param_set(publisher_enable, &enabled), 0);
 	}
 }
+
+TEST(ControlAllocatorMorphing, AutoAndSequentialEnableDirectionPreservingSaturation)
+{
+	param_control_autosave(false);
+	int32_t airframe = 13, count = 4, airmode = 0;
+	ASSERT_EQ(param_set(param_find("CA_AIRFRAME"), &airframe), 0);
+	ASSERT_EQ(param_set(param_find("CA_ROTOR_COUNT"), &count), 0);
+	ASSERT_EQ(param_set(param_find("MC_AIRMODE"), &airmode), 0);
+
+	for (int motor = 0; motor < 4; ++motor) {
+		char name[17];
+		float ct = 6.5f, km = motor < 2 ? -0.05f : 0.05f;
+		snprintf(name, sizeof(name), "CA_ROTOR%d_CT", motor);
+		ASSERT_EQ(param_set(param_find(name), &ct), 0);
+		snprintf(name, sizeof(name), "CA_ROTOR%d_KM", motor);
+		ASSERT_EQ(param_set(param_find(name), &km), 0);
+	}
+
+	uORB::Publication<morphing_arm_state_s> input{ORB_ID(morphing_arm_state)};
+	morphing_arm_state_s state{};
+	state.timestamp = 10000;
+	for (float &angle : state.angle) { angle = morphing_quad::MAX_ANGLE_RAD; }
+	ASSERT_TRUE(input.publish(state));
+
+	for (int32_t method : {1, 2}) {
+		ASSERT_EQ(param_set(param_find("CA_METHOD"), &method), 0);
+		ControlAllocator module;
+		auto &allocator = ControlAllocatorMorphingTestPeer::allocator(module);
+		matrix::Vector<float, 6> command;
+		command(1) = 1.f;
+		command(5) = -0.25f;
+		allocator.setControlSetpoint(command);
+		allocator.allocate();
+		allocator.clipActuatorSetpoint();
+		const auto achieved = allocator.getAllocatedControl();
+		EXPECT_GT(achieved(1), 0.25f);
+		EXPECT_NEAR(achieved(0), 0.f, 1e-5f);
+		EXPECT_NEAR(achieved(2), 0.f, 1e-5f);
+		EXPECT_NEAR(achieved(5), -0.25f, 1e-5f);
+	}
+}
