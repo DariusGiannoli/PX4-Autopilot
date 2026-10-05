@@ -7,6 +7,9 @@ PX4 runtime dependencies, parameter writes, or hardware side effects. The new
 The provider is registered in the build and selected explicitly with
 `CA_AIRFRAME=13`; no board or existing airframe default is changed.
 
+The [2026-10-05 firmware audit](FIRMWARE_AUDIT_2026-10-05.md) records fresh host
+tests, the board build, stack results and remaining hardware verification.
+
 ## Allocator integration
 
 The provider inherits the multirotor's sequential-desaturation preference and RPY
@@ -42,11 +45,14 @@ It adds no arming interlock or position feedback.
   valid small yaw coefficients. It does not manufacture authority in degenerate
   geometries or replace configuration/flight validation.
 
-Core changes consist of three optional provider policies (update interval,
-authority threshold, neutral normalization reference), one optional normalization
-setter in the allocator, and source selection. Defaults preserve standard-model
-behavior. Motor publication, clipping, slew limiting, failure-column removal,
-and the sequential-desaturation algorithm are reused.
+Core changes include optional provider policies for the update interval,
+authority threshold, neutral normalization reference, row-scaled inverse and
+direction-preserving saturation, plus allocator integration and source selection.
+Defaults preserve standard-model behavior. Motor publication, slew limiting and
+failure-column removal are reused. The morphing provider uses the corrected
+four-axis inverse and bounded saturation calculation for supported configurations;
+see [inverse validation](INVERSE_VALIDATION.md) and
+[saturation validation](SATURATION_VALIDATION.md) for their guards and fallback behavior.
 
 The listener is implemented inside PX4's actuator-effectiveness provider; no
 separate scheduled script is needed. The separate `morphing_arm_publisher` observes calibrated MAVLink actuator
@@ -159,10 +165,11 @@ From the PX4 repository root, using Python 3.9+ with NumPy and a C++14 compiler:
 python3 Tools/morphing_quad_geometry/test_geometry.py
 ```
 
-For a different checkout location:
+The runner detects the sibling `Morpheus` checkout, with the former
+`morphing-quadrotor-learning` name retained as a fallback. For a different checkout location:
 
 ```sh
-python3 Tools/morphing_quad_geometry/test_geometry.py --model-root /path/to/morphing-quadrotor-learning
+python3 Tools/morphing_quad_geometry/test_geometry.py --model-root /path/to/Morpheus
 ```
 
 `--compiler` or `CXX` selects the compiler (default `clang++`). The test builds

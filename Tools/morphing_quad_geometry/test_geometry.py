@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile firmware geometry on the host and compare with the CAD dynamics model.
 
-Requires numpy and the sibling morphing-quadrotor-learning repository. All build
+Requires numpy and the sibling Morpheus reference repository. All build
 artifacts are temporary. The external reference model and URDF are read-only.
 """
 import argparse
@@ -25,12 +25,18 @@ MOTOR_TO_ARM = [0, 2, 3, 1]  # FR, RL, FL, RR
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--model-root', type=Path,
-                        default=PX4.parent.parent / 'morphing-quadrotor-learning')
+    roots = [PX4.parent.parent / name for name in ('Morpheus', 'morphing-quadrotor-learning')]
+    default_root = next((root for root in roots
+                         if (root / 'dynamics/morphing_quadrotor.py').is_file()
+                         and (root / 'robot_description/morphing_quadrotor.urdf').is_file()), roots[0])
+    parser.add_argument('--model-root', type=Path, default=default_root,
+                        help='CAD/model checkout (defaults to sibling Morpheus, then legacy repository name)')
     parser.add_argument('--compiler', default=os.environ.get('CXX', 'clang++'))
     args = parser.parse_args()
     urdf = args.model_root / 'robot_description/morphing_quadrotor.urdf'
     model_path = args.model_root / 'dynamics/morphing_quadrotor.py'
+    if not urdf.is_file() or not model_path.is_file():
+        parser.error(f'Reference model or URDF missing under {args.model_root}; specify --model-root')
     spec = importlib.util.spec_from_file_location('cad_reference', model_path)
     reference = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = reference
