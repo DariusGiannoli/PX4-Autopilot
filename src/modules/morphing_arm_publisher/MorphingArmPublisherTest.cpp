@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include <gtest/gtest.h>
+#include <map>
+#include <string>
+
+// SITL has no hardware MIN/MAX/DIS parameters. Substitute their storage only;
+// execute the production configuration validator and command/model path.
+static std::map<std::string, int32_t> measured_parameters;
+static int measured_read(const char *name, int32_t *value)
+{
+    auto found = measured_parameters.find(name);
+    if (found == measured_parameters.end()) { return -1; }
+    *value = found->second; return 0;
+}
+
 #include "MorphingArmPublisher.hpp"
 #include <drivers/drv_hrt.h>
 #include <ActuatorEffectivenessMorphingQuad.hpp>
@@ -13,6 +26,9 @@ public:
 	static void timeout(MorphingArmPublisher &m, uint64_t now) { m.checkTimeout(now); }
 	static void resetTime(MorphingArmPublisher &m) { m._start_time = 1; m._last_seen = 1; }
 	static uint8_t mask(const MorphingArmPublisher &m) { return m._state.initialized_mask; }
+	static void advance(MorphingArmPublisher &m, uint64_t now) { m.advanceMeasured(now); m.publishMeasured(now); }
+	static bool measured(MorphingArmPublisher &m) { m._measured = m.configureMeasured(measured_read); return m._measured; }
+	static bool fault(const MorphingArmPublisher &m) { return m._model_fault; }
 	static const morphing_publisher_status_s &status(const MorphingArmPublisher &m) { return m._status; }
 };
 
@@ -25,6 +41,7 @@ protected:
 		setInt("CA_AIRFRAME", 13);
 		setInt("CA_ROTOR_COUNT", 4);
 		setInt("MORPH_PUB_EN", 1);
+		setInt("MARM_MODEL", 0);
 		setFloat("MORPH_PUB_TMO", 1.f);
 		for (const char *arm : {"FR", "RR", "RL", "FL"}) {
 			char name[17];
@@ -37,6 +54,25 @@ protected:
 	void TearDown() override { setInt("MORPH_PUB_EN", 0); }
 	static void setInt(const char *name, int32_t value) { ASSERT_EQ(param_set(param_find(name), &value), 0); }
 	static void setFloat(const char *name, float value) { ASSERT_EQ(param_set(param_find(name), &value), 0); }
+	static void measuredConfig()
+	{
+		measured_parameters.clear();
+		measured_parameters["MARM_CAL_ID"] = morphing_publisher::measured::CALIBRATION_ID;
+		measured_parameters["PWM_MAIN_REV"] = 0;
+		measured_parameters["PWM_MAIN_TIM1"] = 50;
+		measured_parameters["PWM_MAIN_TIM2"] = 50;
+		const unsigned pins[] = {7, 6, 8, 5};
+		for (unsigned i = 0; i < 4; ++i) {
+			char name[17];
+			snprintf(name, sizeof(name), "PWM_MAIN_FUNC%u", pins[i]); measured_parameters[name] = 301+i;
+			snprintf(name, sizeof(name), "PWM_MAIN_MIN%u", pins[i]); measured_parameters[name] = 1150;
+			snprintf(name, sizeof(name), "PWM_MAIN_MAX%u", pins[i]); measured_parameters[name] = 1750;
+			snprintf(name, sizeof(name), "PWM_MAIN_DIS%u", pins[i]); measured_parameters[name] = 1450;
+		}
+		for (const char *arm : {"FR", "RR", "RL", "FL"}) {
+			char name[17]; snprintf(name, sizeof(name), "MARM_%s_DIR", arm); measured_parameters[name] = 1;
+		}
+	}
 	static vehicle_command_s command(uint64_t timestamp, float a, float b, float c, float d)
 	{
 		vehicle_command_s out{};
@@ -216,4 +252,98 @@ TEST_F(MorphingArmPublisherTest, ShiftedCenterPublishesNeutralAndCorrectTravel)
     EXPECT_FALSE(MorphingArmPublisherTestPeer::configure(module));
     setFloat("MARM_RR_CTR", NAN);
     EXPECT_FALSE(MorphingArmPublisherTestPeer::configure(module));
+}
+
+TEST_F(MorphingArmPublisherTest, MeasuredRoutingAndFiniteMotion)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    uORB::Subscription sub{ORB_ID(morphing_arm_state)};
+    morphing_arm_state_s state{};
+    MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
+    MorphingArmPublisherTestPeer::advance(module, 1000);
+    ASSERT_TRUE(sub.update(&state));
+    for (float angle : state.angle) { EXPECT_NEAR(angle, 0.f, 1e-6f); }
+    // Set2 is RL. New target must not instantly change estimated geometry.
+    MorphingArmPublisherTestPeer::process(module, command(10000, 0.f, .3f, 0.f, 0.f), 10000);
+    MorphingArmPublisherTestPeer::advance(module, 10000);
+    ASSERT_TRUE(sub.update(&state));
+    for (float angle : state.angle) { EXPECT_NEAR(angle, 0.f, 1e-6f); }
+    MorphingArmPublisherTestPeer::advance(module, 80000);
+    ASSERT_TRUE(sub.update(&state));
+    EXPECT_GT(state.angle[2], .1f);
+    EXPECT_NEAR(state.angle[0], 0.f, 1e-6f);
+    EXPECT_NEAR(state.angle[1], 0.f, 1e-6f);
+    EXPECT_NEAR(state.angle[3], 0.f, 1e-6f);
+    EXPECT_FALSE(MorphingArmPublisherTestPeer::fault(module));
+}
+
+TEST_F(MorphingArmPublisherTest, MeasuredStaleHistoryRequiresRestart)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
+    MorphingArmPublisherTestPeer::timeout(module, 2000000);
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
+    MorphingArmPublisherTestPeer::process(module, command(2000001, 0.f, 0.f, 0.f, 0.f), 2000001);
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::status(module).stale);
+    EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
+}
+
+TEST_F(MorphingArmPublisherTest, MeasuredConfigurationAndInitialNeutralGate)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    measured_parameters["PWM_MAIN_DIS5"] = 1300;
+    EXPECT_FALSE(MorphingArmPublisherTestPeer::measured(module));
+    measured_parameters["PWM_MAIN_DIS5"] = 1450;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    MorphingArmPublisherTestPeer::process(module, command(1000, .2f, 0.f, 0.f, 0.f), 1000);
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
+    EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
+}
+
+TEST_F(MorphingArmPublisherTest, MeasuredAllFourChannelsAndDirectionSigns)
+{
+    measuredConfig();
+    measured_parameters["MARM_FL_DIR"] = -1;
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    uORB::Subscription sub{ORB_ID(morphing_arm_state)};
+    MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
+    MorphingArmPublisherTestPeer::process(module, command(10000, .1f, .2f, .3f, .4f), 10000);
+    for (uint64_t now = 60000; now <= 260000; now += 50000) {
+        MorphingArmPublisherTestPeer::advance(module, now);
+    }
+    morphing_arm_state_s state{};
+    ASSERT_TRUE(sub.update(&state));
+    // Measured lookup expectations for PWM 1480,1570,1510,1540 in canonical order.
+    const float degrees[] = {3.141499f, 13.020228f, 6.550470f, -9.800842f};
+    for (unsigned i = 0; i < 4; ++i) {
+        EXPECT_NEAR(state.angle[i], degrees[i] * .01745329252f, .00035f);
+    }
+}
+
+TEST_F(MorphingArmPublisherTest, MeasuredSchedulerGapStopsGeometry)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
+    MorphingArmPublisherTestPeer::advance(module, 102000);
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::status(module).stale);
+    EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
 }

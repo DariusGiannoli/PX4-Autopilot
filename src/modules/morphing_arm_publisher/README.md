@@ -2,10 +2,66 @@
 
 `morphing_arm_publisher` connects `vehicle_command` to `morphing_arm_state`.
 It observes `VEHICLE_CMD_DO_SET_ACTUATOR` with `param7=0`. Parameters 1–4 are
-explicitly assigned to **FR, RR, RL, FL**. It does not drive PWM itself or send
+assigned according to `MARM_MODEL`: legacy **FR, RR, RL, FL** or measured **FR, RL, FL, RR**. It does not drive PWM itself or send
 command acknowledgements: existing PX4 `FunctionActuatorSet` drives outputs
 assigned to Peripheral via Actuator Set 1–4. RC AUX is a different path and is
 not covered.
+
+## Shared measured FR model (2026-10-12)
+
+Select `MARM_MODEL=1` only with the matching host calibration ID `1210830`.
+The JSON source in Morpheus is `dynamics/arm_mapping/model.json`;
+`control/tools/export_arm_calibration.py --check` verifies the generated C++ table.
+The host setup is `control/config/arm_measured_20261012.nsh`. It is a manual
+configuration file, not executed automatically by the flight script.
+
+| Actuator set | Arm | MAIN | Min / neutral / max (us) |
+| --- | --- | --- | --- |
+| 1 | FR | 7 | 1150 / 1450 / 1750 |
+| 2 | RL | 6 | 1150 / 1450 / 1750 |
+| 3 | FL | 8 | 1150 / 1450 / 1750 |
+| 4 | RR | 5 | 1150 / 1450 / 1750 |
+
+MAIN 5–6 and MAIN 7–8 PWM timer groups must both be 50 Hz.
+
+The prior 1300/1700 disarmed values were temporary clearance positions in the
+FR experiment. They are not used as operational neutral calibration.
+
+The host inverts the fitted generalized-play/hysteresis map separately for each
+arm. Commands remain normalized raw PWM, not angle fractions; never divide them
+by two. The publisher reconstructs four independent hysteresis states and
+integrates the fitted speed-limited second-order response with steps <=2 ms.
+It publishes estimated current angles at 100 Hz in canonical FR/RR/RL/FL order.
+MARM_*_NEG/ZERO/POS/CTR are ignored in measured mode. MARM_*_DIR selects the
+increasing-PWM to CAD angle sign (+1 by default); the host checks matching signs.
+Verify signs on each installed linkage before changing geometry in flight.
+
+The first accepted packet must contain four zero commands (1450 us) and the
+physical arms must already be at neutral. Subsequent packets must contain all
+four finite targets. Repeated identical PWM commands do not reapply hysteresis.
+On timeout, queue overflow, invalid command or >100 ms scheduler gap, the model
+stops refreshing allocation geometry and requires publisher restart from neutral.
+The independent PWM driver may continue holding/applying commands. This is not a
+flight abort mechanism or servo-position feedback. Lost radio packets before
+vehicle_command publication cannot be detected here; they can desynchronize the
+host inverse and onboard history. Verify the complete command path in bench logs.
+
+The host preserves the existing +/-25 degree command limit. The allocator still
+accepts only +/-30 degrees; an out-of-range predicted angle latches a model fault
+rather than clipping the geometry. PWM bounds alone do not establish clearance
+for simultaneous arm movements. Returning to zero angle may request PWM slightly
+different from 1450 because the fitted hysteresis model compensates movement
+history; DIS remains exactly 1450.
+
+The measured 38 ms is **host-command to mocap-receipt delay**, not an isolated
+servo delay. It is deliberately excluded from the onboard dynamics. PWM phase,
+servo-only delay, voltage/load transfer and the shared-model assumption across
+unmeasured arms remain hardware qualification items. The dynamics are empirical
+position predictions, not a torque-based physical servo model.
+
+## Legacy model (`MARM_MODEL=0`)
+
+The following sections describe the original three-point mode.
 
 ## Configuration before activation
 

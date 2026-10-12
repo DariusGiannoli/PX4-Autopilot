@@ -5,7 +5,7 @@ parameters:
         MORPH_PUB_EN:
             description:
                 short: Enable calibrated MAVLink arm publisher
-                long: Enable only after measuring calibration and configuring matching peripheral outputs 1-4 in FR RR RL FL order. No RC AUX support or arming interlock. Disabling stops angle publication, not servo outputs.
+                long: Enable only after measuring calibration and configuring matching peripheral outputs for the selected MARM_MODEL. No RC AUX support or arming interlock. Disabling stops angle publication, not servo outputs.
             type: boolean
             default: 0
         MORPH_PUB_TMO:
@@ -17,6 +17,61 @@ parameters:
             min: 0.1
             max: 10.0
             default: 1.0
+            reboot_required: true
+        MARM_MODEL:
+            description:
+                short: Arm mapping model
+                long: 0 uses legacy FR RR RL FL three-point calibration. 1 uses the shared measured FR model with actuator sets FR RL FL RR, MAIN 7 6 8 5, neutral 1450 and PWM 1150..1750. Restart from physical neutral after changing. No measured feedback; bench dynamics exclude host/mocap delay.
+            type: enum
+            values:
+                0: Legacy three-point
+                1: Shared FR measured model
+            default: 0
+            reboot_required: true
+        MARM_CAL_ID:
+            description:
+                short: Compiled measured arm calibration ID
+                long: Must match the compiled model and host configuration. Do not change manually to bypass a version mismatch.
+            type: int32
+            min: 1210830
+            max: 1210830
+            default: 1210830
+            reboot_required: true
+        MARM_FR_DIR:
+            description:
+                short: FR increasing PWM to CAD angle sign
+                long: Measured model only. Verify physical CAD positive rotation. Host inverse mapping must use the same sign. Restart after changing.
+            type: int32
+            min: -1
+            max: 1
+            default: 1
+            reboot_required: true
+        MARM_RR_DIR:
+            description:
+                short: RR increasing PWM to CAD angle sign
+                long: Measured model only. Verify physical CAD positive rotation. Host inverse mapping must use the same sign. Restart after changing.
+            type: int32
+            min: -1
+            max: 1
+            default: 1
+            reboot_required: true
+        MARM_RL_DIR:
+            description:
+                short: RL increasing PWM to CAD angle sign
+                long: Measured model only. Verify physical CAD positive rotation. Host inverse mapping must use the same sign. Restart after changing.
+            type: int32
+            min: -1
+            max: 1
+            default: 1
+            reboot_required: true
+        MARM_FL_DIR:
+            description:
+                short: FL increasing PWM to CAD angle sign
+                long: Measured model only. Verify physical CAD positive rotation. Host inverse mapping must use the same sign. Restart after changing.
+            type: int32
+            min: -1
+            max: 1
+            default: 1
             reboot_required: true
         MARM_FR_NEG:
             description:

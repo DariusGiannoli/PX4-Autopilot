@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #pragma once
 #include "ArmCommandState.hpp"
+#include "MeasuredArmModel.hpp"
 #include <px4_platform_common/module.h>
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
 #include <parameters/param.h>
@@ -29,6 +30,17 @@ private:
 	void checkTimeout(uint64_t now);
 	void publishStatus(uint64_t now);
 	bool enabled() const;
+	static int readInteger(const char *name, int32_t *value);
+	bool configureMeasured(int (*read_int)(const char *, int32_t *) = readInteger);
+	void advanceMeasured(uint64_t now);
+	void processMeasured(const vehicle_command_s &command, uint64_t now);
+	void publishMeasured(uint64_t now);
+	bool _measured{false};
+	bool _model_started{false};
+	bool _model_fault{false}; // Unknown history requires restart from neutral.
+	uint64_t _model_time{0};
+	int32_t _directions[4]{1, 1, 1, 1};
+	morphing_publisher::MeasuredArmModel _models[4]{};
 	morphing_publisher::Calibration _calibration{};
 	morphing_publisher::ArmCommandState _state{};
 	uORB::Subscription _commands{ORB_ID(vehicle_command)};
