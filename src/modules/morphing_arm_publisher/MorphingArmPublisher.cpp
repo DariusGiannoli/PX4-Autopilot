@@ -2,6 +2,7 @@
 #include "MorphingArmPublisher.hpp"
 #include <drivers/drv_hrt.h>
 #include <cstdio>
+#include "../control_allocator/ActuatorEffectiveness/MorphingQuadGeometry.hpp"
 
 MorphingArmPublisher::MorphingArmPublisher() :
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::lp_default)
@@ -139,8 +140,8 @@ void MorphingArmPublisher::publishMeasured(uint64_t now)
 	state.timestamp = now;
 	for (unsigned i = 0; i < 4; ++i) {
 		state.angle[i] = _models[i].angle * _directions[i] * 0.017453292519943295f;
-		// Existing allocator supports +/-30 degrees; do not silently clip geometry.
-		if (!PX4_ISFINITE(state.angle[i]) || fabsf(state.angle[i]) > 0.523598776f) {
+		// Preserve actual predicted overshoot; use the allocator's shared envelope.
+		if (!PX4_ISFINITE(state.angle[i]) || fabsf(state.angle[i]) > morphing_quad::MAX_ANGLE_RAD) {
 			_model_fault = true; _state.invalidate(); _status.stale = true;
 			PX4_ERR("Predicted arm angle outside allocator range; restart from neutral");
 			return;

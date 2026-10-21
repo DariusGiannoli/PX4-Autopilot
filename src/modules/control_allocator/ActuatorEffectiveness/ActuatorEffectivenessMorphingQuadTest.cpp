@@ -111,7 +111,7 @@ TEST_F(MorphingAllocationTest, AcceptedStatesAndMotorOrdering)
 	}
 	EXPECT_GT(fabsf(moved.effectiveness_matrices[0](0, 3) - neutral.effectiveness_matrices[0](0, 3)), 0.001f);
 
-	for (float bad : {0.6f, std::numeric_limits<float>::quiet_NaN()}) {
+	for (float bad : {morphing_quad::MAX_ANGLE_RAD + .01f, std::numeric_limits<float>::quiet_NaN()}) {
 		publish({{bad, 0.f, 0.f, 0.f}});
 		ActuatorEffectiveness::Configuration invalid{};
 		EXPECT_FALSE(provider.getEffectivenessMatrix(invalid, EffectivenessUpdateReason::NO_EXTERNAL_UPDATE));
@@ -509,7 +509,7 @@ TEST_F(MorphingAllocationTest, RecordedConfigurationRollPitchDemandsAndTransitio
 					const double error = std::fabs(achieved - static_cast<double>(command(axis)));
 					worst_tracking = fmax(worst_tracking, error);
 
-					if (axis < 3 && command(axis) == 0.f) { worst_cross_axis = fmax(worst_cross_axis, error); }
+					if (axis < 3 && std::fabs(command(axis)) < 1e-7f) { worst_cross_axis = fmax(worst_cross_axis, error); }
 
 					EXPECT_NEAR(achieved, command(axis), 1e-5) << "axis " << axis;
 				}
@@ -716,7 +716,7 @@ TEST_F(MorphingAllocationTest, SaturationPreservesAxesThrustAndLimitsAcrossAirmo
 							EXPECT_GE(achieved(axis) * command(axis), -2e-5f);
 							EXPECT_LE(fabsf(achieved(axis)), fabsf(command(axis)) + 2e-5f);
 
-							if (command(axis) == 0.f) {
+							if (std::fabs(command(axis)) < 1e-7f) {
 								worst_zero_axis = fmaxf(worst_zero_axis, fabsf(achieved(axis)));
 								EXPECT_NEAR(achieved(axis), 0.f, 2e-5f);
 							}
@@ -727,7 +727,7 @@ TEST_F(MorphingAllocationTest, SaturationPreservesAxesThrustAndLimitsAcrossAirmo
 						EXPECT_LT(direction_error, 2e-5f);
 						EXPECT_LE(achieved(5), 2e-5f);
 
-						if (mode == 0 || (mode == 1 && command(0) == 0.f && command(1) == 0.f)) {
+						if (mode == 0 || (mode == 1 && std::fabs(command(0)) < 1e-7f && std::fabs(command(1)) < 1e-7f)) {
 							EXPECT_LE(-achieved(5), thrust + 2e-5f);
 						}
 

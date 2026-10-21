@@ -43,7 +43,9 @@ using Vector3 = FixedArray<float, 3>;
 using RotorValues = FixedArray<float, 4>;
 using EffectivenessMatrix = FixedArray<FixedArray<float, 4>, 6>;
 
-constexpr float MAX_ANGLE_RAD = 0.5235987755982988f; // 30 degrees
+// Geometry prediction envelope, not a servo command/clearance limit.
+// Host commands remain +/-30 deg; allow the measured dynamics' transient overshoot.
+constexpr float MAX_ANGLE_RAD = 0.6108652381980153f; // 35 degrees
 constexpr FixedArray<std::size_t, 4> MOTOR_TO_ARM{{0, 2, 3, 1}};
 
 struct GeometryResult {

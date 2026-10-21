@@ -29,6 +29,7 @@ public:
 	static void advance(MorphingArmPublisher &m, uint64_t now) { m.advanceMeasured(now); m.publishMeasured(now); }
 	static bool measured(MorphingArmPublisher &m) { m._measured = m.configureMeasured(measured_read); return m._measured; }
 	static bool fault(const MorphingArmPublisher &m) { return m._model_fault; }
+	static void setAngle(MorphingArmPublisher &m, float degrees) { m._models[0].angle = degrees; }
 	static const morphing_publisher_status_s &status(const MorphingArmPublisher &m) { return m._status; }
 };
 
@@ -346,4 +347,55 @@ TEST_F(MorphingArmPublisherTest, MeasuredSchedulerGapStopsGeometry)
     EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
     EXPECT_TRUE(MorphingArmPublisherTestPeer::status(module).stale);
     EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
+}
+
+TEST_F(MorphingArmPublisherTest, ThirtyDegreeReversalsPublishUnclippedGeometry)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    uORB::Subscription sub{ORB_ID(morphing_arm_state)};
+    MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
+    uint64_t now = 1000;
+    float peak = 0.f;
+    // Actual rounded inverse endpoints from host calibration: +30 / -30 deg.
+    // Full reversals stress the dynamics more than the normal 3-deg ramp.
+    for (int pwm : {1743, 1172, 1743, 1172}) {
+        const float wire = (pwm - 1450.f) / 300.f;
+        for (unsigned tick = 0; tick < 60; ++tick) {
+            now += 10000;
+            if (tick % 10 == 0) {
+                // RL stays neutral just as in the current L1 test.
+                MorphingArmPublisherTestPeer::process(module, command(now, wire, 0.f, wire, wire), now);
+            }
+            MorphingArmPublisherTestPeer::advance(module, now);
+            ASSERT_FALSE(MorphingArmPublisherTestPeer::fault(module));
+            morphing_arm_state_s state{};
+            ASSERT_TRUE(sub.update(&state));
+            EXPECT_NEAR(state.angle[2], 0.f, 1e-6f);
+            peak = fmaxf(peak, fabsf(state.angle[0]));
+            morphing_quad::GeometryResult geometry{};
+            const morphing_quad::RotorValues angles{{state.angle[0], state.angle[1], state.angle[2], state.angle[3]}};
+            EXPECT_TRUE(morphing_quad::compute(angles, {{1.f, 1.f, 1.f, 1.f}},
+                                              {{-.05f, -.05f, .05f, .05f}}, {}, geometry));
+        }
+    }
+    EXPECT_GT(peak, .523598776f); // Overshoot was published, not hidden by clipping.
+    EXPECT_LT(peak, morphing_quad::MAX_ANGLE_RAD);
+}
+
+TEST_F(MorphingArmPublisherTest, PredictionOutsideEnvelopeStillFaults)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
+    MorphingArmPublisherTestPeer::setAngle(module, 36.f);
+    MorphingArmPublisherTestPeer::advance(module, 1000);
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::status(module).stale);
 }

@@ -9,7 +9,7 @@ not covered.
 
 ## Shared measured FR model (2026-10-12)
 
-Select `MARM_MODEL=1` only with the matching host calibration ID `1210830`.
+Select `MARM_MODEL=1` only with the matching host calibration ID `1210831`.
 The JSON source in Morpheus is `dynamics/arm_mapping/model.json`;
 `control/tools/export_arm_calibration.py --check` verifies the generated C++ table.
 The host setup is `control/config/arm_measured_20261012.nsh`. It is a manual
@@ -46,8 +46,9 @@ flight abort mechanism or servo-position feedback. Lost radio packets before
 vehicle_command publication cannot be detected here; they can desynchronize the
 host inverse and onboard history. Verify the complete command path in bench logs.
 
-The host preserves the existing +/-25 degree command limit. The allocator still
-accepts only +/-30 degrees; an out-of-range predicted angle latches a model fault
+The host limits commands to +/-30 degrees. The allocator and publisher support
+a +/-35 degree prediction envelope to represent transient overshoot at endpoints.
+This does not increase the host command or PWM bounds. An out-of-range predicted angle latches a model fault
 rather than clipping the geometry. PWM bounds alone do not establish clearance
 for simultaneous arm movements. Returning to zero angle may request PWM slightly
 different from 1450 because the fitted hysteresis model compensates movement

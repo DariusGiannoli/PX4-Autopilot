@@ -33,9 +33,9 @@ parameters:
                 short: Compiled measured arm calibration ID
                 long: Must match the compiled model and host configuration. Do not change manually to bypass a version mismatch.
             type: int32
-            min: 1210830
-            max: 1210830
-            default: 1210830
+            min: 1210831
+            max: 1210831
+            default: 1210831
             reboot_required: true
         MARM_FR_DIR:
             description:
