@@ -1697,6 +1697,38 @@ void EKF2::PublishOdometry(const hrt_abstime &timestamp, const imuSample &imu_sa
 	// publish vehicle odometry data
 	odom.timestamp = _replay_mode ? timestamp : hrt_absolute_time();
 	_odometry_pub.publish(odom);
+
+	// Publish health from this exact EKF update. No dependency on verbose logging
+	// or the slower status topics, and no change to estimator/control behavior.
+	morpheus_estimator_health_s health{};
+	health.timestamp = odom.timestamp;
+	health.timestamp_sample = odom.timestamp_sample;
+	health.fusion_horizon_us = _ekf.time_delayed_us();
+#if defined(CONFIG_EKF2_EXTERNAL_VISION)
+	health.ev_pos_last_fuse = _ekf.aid_src_ev_pos().time_last_fuse;
+	health.ev_hgt_last_fuse = _ekf.aid_src_ev_hgt().time_last_fuse;
+	health.ev_yaw_last_fuse = _ekf.aid_src_ev_yaw().time_last_fuse;
+#endif
+	const auto &flags = _ekf.control_status_flags();
+	health.control_flags = (uint32_t(flags.tilt_align) << 0)
+		| (uint32_t(flags.ev_pos) << 1) | (uint32_t(flags.ev_hgt) << 2)
+		| (uint32_t(flags.ev_yaw) << 3) | (uint32_t(flags.inertial_dead_reckoning) << 4)
+		| (uint32_t(flags.fake_pos) << 5) | (uint32_t(flags.ev_yaw_fault) << 6)
+		| (uint32_t(flags.gps) << 7) | (uint32_t(flags.yaw_align) << 8);
+	health.fault_flags = _ekf.fault_status().value;
+	health.innovation_flags = _ekf.innov_check_fail_status().value;
+	health.heading_variance = _ekf.getYawVar();
+	_ekf.get_ekf_soln_status(&health.solution_flags);
+	health.estimator_instance = _instance;
+	health.ev_pose_frame = _morpheus_ev_pose_frame;
+	health.reset_counter = odom.reset_counter;
+	health.xy_reset_counter = _ekf.get_posNE_reset_count();
+	health.z_reset_counter = _ekf.get_posD_reset_count();
+	health.vxy_reset_counter = _ekf.get_velNE_reset_count();
+	health.vz_reset_counter = _ekf.get_velD_reset_count();
+	health.heading_reset_counter = _ekf.get_quat_reset_count();
+	health.heading_good_for_control = _ekf.isYawFinalAlignComplete();
+	_morpheus_health_pub.publish(health);
 }
 
 void EKF2::PublishSensorBias(const hrt_abstime &timestamp)
@@ -2303,6 +2335,7 @@ bool EKF2::UpdateExtVisionSample(ekf2_timestamps_s &ekf2_timestamps)
 		ev_data.quality = ev_odom.quality;
 
 		if (new_ev_odom)  {
+			_morpheus_ev_pose_frame = ev_odom.pose_frame;
 			_ekf.setExtVisionData(ev_data);
 		}
 
