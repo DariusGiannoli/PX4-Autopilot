@@ -157,6 +157,7 @@ public:
 	int instance() const { return _instance; }
 
 private:
+	friend class EKF2ParameterUpdateTestPeer;
 
 	static constexpr uint8_t MAX_NUM_IMUS = 4;
 	static constexpr uint8_t MAX_NUM_MAGS = 4;

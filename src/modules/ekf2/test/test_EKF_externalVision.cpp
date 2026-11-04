@@ -109,6 +109,26 @@ TEST_F(EkfExternalVisionTest, checkVisionFusionLogic)
 	EXPECT_FALSE(_ekf->global_position_is_valid());
 }
 
+TEST_F(EkfExternalVisionTest, visionYawNoiseUsesVarianceUnits)
+{
+	_sensor_simulator.runSeconds(_tilt_align_time);
+	_ekf_wrapper.enableExternalVisionHeadingFusion();
+	_sensor_simulator._vio.setPositionFrameToLocalFRD();
+	_sensor_simulator._vio.setAngularVariance(0.0009f);
+	_ekf->getParamHandle()->ev_att_noise = 0.1f;
+	_sensor_simulator.startExternalVision();
+	_sensor_simulator.runSeconds(2);
+
+	ASSERT_TRUE(_ekf_wrapper.isIntendingExternalVisionHeadingFusion());
+	// The configured standard deviation is in radians; aid-source variance is rad^2.
+	EXPECT_NEAR(_ekf->aid_src_ev_yaw().observation_variance, 0.01f, 1e-6f);
+
+	// A larger supplied measurement variance must still take precedence.
+	_sensor_simulator._vio.setAngularVariance(0.04f);
+	_sensor_simulator.runSeconds(1);
+	EXPECT_NEAR(_ekf->aid_src_ev_yaw().observation_variance, 0.04f, 1e-6f);
+}
+
 TEST_F(EkfExternalVisionTest, visionVelocityReset)
 {
 	_sensor_simulator.runSeconds(_tilt_align_time);
@@ -367,4 +387,93 @@ TEST_F(EkfExternalVisionTest, positionFrameLocal)
 	pos_earth_est = _ekf->getPosition();
 	EXPECT_NEAR(pos_earth_est(0), pos_earth(0), 0.1f);
 	EXPECT_NEAR(pos_earth_est(1), pos_earth(1), 0.1f);
+}
+
+// Append to src/modules/ekf2/test/test_EKF_externalVision.cpp in an isolated
+// test worktree. This snippet never accesses hardware or transport sockets.
+// It tests the real EKF core, with direct parameter access as existing EKF unit
+// tests do. It does NOT test EKF2's uORB parameter_update subscription lifecycle.
+TEST(EkfExternalVisionStartupLifecycleTest, delayedFrdUnknownQualityRuntimeEnableAndResume)
+{
+	auto ekf = std::make_shared<Ekf>();
+	auto *params = ekf->getParamHandle();
+	params->delay_max_ms = 200.f; // Set before init: determines buffer allocation.
+	params->ev_delay_ms = 0.f; // Capture time already supplied; no extra delay.
+	params->ev_quality_minimum = 0;
+	params->ev_ctrl = 0;
+	params->height_sensor_ref = static_cast<int32_t>(HeightSensor::BARO);
+	ASSERT_TRUE(ekf->init(0));
+	ekf->set_in_air_status(false);
+	ekf->set_vehicle_at_rest(true);
+	SensorSimulator sim(ekf);
+	EkfWrapper wrapper(ekf);
+	sim._mag.stop(); // Match failed-run yaw_align=false, no North reference.
+	sim.stopExternalVision(); // The lambda below owns the EV stream.
+	sim.runSeconds(7.f);
+	ASSERT_TRUE(ekf->control_status_flags().tilt_align);
+	ASSERT_FALSE(ekf->control_status_flags().yaw_align);
+
+	extVisionSample sample{};
+	sample.pos_frame = PositionFrame::LOCAL_FRAME_FRD;
+	sample.vel_frame = VelocityFrame::LOCAL_FRAME_FRD;
+	sample.pos = Vector3f{-0.367f, 0.716f, 0.156f};
+	sample.quat = Quatf{1.f, 0.f, 0.f, 0.f};
+	sample.position_var = Vector3f{0.01f, 0.01f, 0.01f};
+	sample.orientation_var = Vector3f{0.01f, 0.01f, 0.01f};
+	sample.quality = -1; // Unknown quality accepted iff EKF2_EV_QMIN <= 0.
+	sample.reset_counter = 0;
+
+	// At rest, fixed state is also correct at the earlier capture time. Feed
+	// 100 Hz EV with a real 20 ms capture-to-insertion delay, preserving stamps.
+	// Simulator's default IMU rate is 200 Hz; the core filter interval is 10 ms.
+	auto run_with_ev = [&](uint32_t duration_us) {
+		ASSERT_EQ(duration_us % 10000, 0u);
+		for (uint32_t elapsed = 0; elapsed < duration_us; elapsed += 10000) {
+			sim.runMicroseconds(10000);
+			sample.time_us = sim.getTime() - 20000;
+			ekf->setExtVisionData(sample);
+		}
+	};
+	auto expect_ev_active = [&]() {
+		EXPECT_TRUE(wrapper.isIntendingExternalVisionPositionFusion());
+		EXPECT_TRUE(wrapper.isIntendingExternalVisionHeightFusion());
+		EXPECT_TRUE(wrapper.isIntendingExternalVisionHeadingFusion());
+		EXPECT_FALSE(wrapper.isIntendingExternalVisionVelocityFusion());
+		EXPECT_GT(ekf->aid_src_ev_pos().time_last_fuse, 0u);
+		EXPECT_GT(ekf->aid_src_ev_hgt().time_last_fuse, 0u);
+		EXPECT_GT(ekf->aid_src_ev_yaw().time_last_fuse, 0u);
+	};
+
+	// Pose traffic can precede runtime enable, as it did in timestamp probing.
+	run_with_ev(20000000);
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionPositionFusion());
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionHeightFusion());
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionHeadingFusion());
+	params->height_sensor_ref = static_cast<int32_t>(HeightSensor::EV);
+	params->ev_ctrl = static_cast<int32_t>(EvCtrl::HPOS)
+			  | static_cast<int32_t>(EvCtrl::VPOS)
+			  | static_cast<int32_t>(EvCtrl::YAW);
+	ekf->updateParameters();
+	run_with_ev(2000000);
+	expect_ev_active();
+
+	// A multi-second sender handover must not permanently prevent restart.
+	sim.runSeconds(3.f);
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionPositionFusion());
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionHeightFusion());
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionHeadingFusion());
+	run_with_ev(2000000);
+	expect_ev_active();
+
+	// Also exercise a second runtime 0 -> 11 transition with poses continuing.
+	params->ev_ctrl = 0;
+	params->height_sensor_ref = static_cast<int32_t>(HeightSensor::BARO);
+	ekf->updateParameters();
+	run_with_ev(2000000);
+	EXPECT_FALSE(wrapper.isIntendingExternalVisionHeadingFusion());
+	params->ev_ctrl = 11;
+	params->height_sensor_ref = static_cast<int32_t>(HeightSensor::EV);
+	ekf->updateParameters();
+	run_with_ev(2000000);
+	expect_ev_active();
 }

@@ -40,6 +40,14 @@ px4_add_unit_gtest(SRC test_EKF_accelerometer.cpp LINKLIBS ecl_EKF ecl_sensor_si
 px4_add_unit_gtest(SRC test_EKF_airspeed.cpp LINKLIBS ecl_EKF ecl_sensor_sim)
 px4_add_unit_gtest(SRC test_EKF_basics.cpp LINKLIBS ecl_EKF ecl_sensor_sim)
 px4_add_unit_gtest(SRC test_EKF_externalVision.cpp LINKLIBS ecl_EKF ecl_sensor_sim ecl_test_helper)
+px4_add_functional_gtest(SRC EKF2ParameterUpdateTest.cpp LINKLIBS modules__ekf2
+    INCLUDES ${EKF_GENERATED_DERIVATION_INCLUDE_PATH})
+# Run() is driven deterministically by the test; disable only its backup timer.
+target_link_options(functional-EKF2ParameterUpdate PRIVATE "-Wl,--wrap=hrt_call_after")
+px4_add_functional_gtest(SRC EKF2RecordedReplayTest.cpp LINKLIBS modules__ekf2
+    INCLUDES ${EKF_GENERATED_DERIVATION_INCLUDE_PATH})
+target_link_options(functional-EKF2RecordedReplay PRIVATE
+    "-Wl,--wrap=hrt_call_after" "-Wl,--wrap=hrt_absolute_time")
 px4_add_unit_gtest(SRC test_EKF_flow.cpp LINKLIBS ecl_EKF ecl_sensor_sim ecl_test_helper)
 px4_add_unit_gtest(SRC test_EKF_flow_generated.cpp LINKLIBS ecl_EKF ecl_sensor_sim ecl_test_helper)
 px4_add_unit_gtest(SRC test_EKF_gyroscope.cpp LINKLIBS ecl_EKF ecl_sensor_sim)

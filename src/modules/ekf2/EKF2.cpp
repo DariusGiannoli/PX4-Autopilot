@@ -1708,6 +1708,19 @@ void EKF2::PublishOdometry(const hrt_abstime &timestamp, const imuSample &imu_sa
 	health.ev_pos_last_fuse = _ekf.aid_src_ev_pos().time_last_fuse;
 	health.ev_hgt_last_fuse = _ekf.aid_src_ev_hgt().time_last_fuse;
 	health.ev_yaw_last_fuse = _ekf.aid_src_ev_yaw().time_last_fuse;
+	health.effective_ev_ctrl = _params->ev_ctrl;
+	health.effective_ev_qmin = _params->ev_quality_minimum;
+	health.effective_hgt_ref = _params->height_sensor_ref;
+	const auto &ev_startup = _ekf.external_vision_startup_status();
+	health.ev_startup_ev_ctrl = ev_startup.ev_ctrl;
+	health.ev_startup_ev_qmin = ev_startup.ev_qmin;
+	health.ev_startup_hgt_ref = ev_startup.hgt_ref;
+	health.ev_startup_checked_at_us = ev_startup.checked_at_us;
+	health.ev_startup_sample_us = ev_startup.sample_us;
+	health.ev_startup_previous_sample_us = ev_startup.previous_sample_us;
+	health.ev_startup_newest_sample_us = ev_startup.newest_sample_us;
+	health.ev_startup_buffer_push_us = ev_startup.buffer_push_us;
+	health.ev_startup_failed_checks = ev_startup.failed_checks;
 #endif
 	const auto &flags = _ekf.control_status_flags();
 	health.control_flags = (uint32_t(flags.tilt_align) << 0)

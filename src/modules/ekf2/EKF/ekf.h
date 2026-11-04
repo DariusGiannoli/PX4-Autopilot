@@ -408,6 +408,7 @@ public:
 	const auto &aid_src_ev_pos() const { return _aid_src_ev_pos; }
 	const auto &aid_src_ev_vel() const { return _aid_src_ev_vel; }
 	const auto &aid_src_ev_yaw() const { return _aid_src_ev_yaw; }
+	const auto &external_vision_startup_status() const { return _ev_startup_status; }
 
 	const BiasEstimator::status &getEvHgtBiasEstimatorStatus() const { return _ev_hgt_b_est.getStatus(); }
 	const BiasEstimator::status &getEvPosBiasEstimatorStatus(int i) const { return _ev_pos_b_est.getStatus(i); }
@@ -623,6 +624,7 @@ private:
 	estimator_aid_source2d_s _aid_src_ev_pos{};
 	estimator_aid_source3d_s _aid_src_ev_vel{};
 	estimator_aid_source1d_s _aid_src_ev_yaw{};
+	externalVisionStartupStatus _ev_startup_status{};
 
 	uint8_t _nb_ev_pos_reset_available{0};
 	uint8_t _nb_ev_vel_reset_available{0};
