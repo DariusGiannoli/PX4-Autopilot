@@ -13,6 +13,18 @@
 // subscription clock, sensor conversion or estimator method is stubbed.
 extern "C" void __wrap_hrt_call_after(struct hrt_call *, hrt_abstime, hrt_callout, void *) {}
 
+namespace
+{
+bool low_boot_clock = false;
+hrt_abstime low_boot_time_us = 0;
+}
+
+extern "C" hrt_abstime __real_hrt_absolute_time();
+extern "C" hrt_abstime __wrap_hrt_absolute_time()
+{
+	return low_boot_clock ? low_boot_time_us : __real_hrt_absolute_time();
+}
+
 class EKF2ParameterUpdateTestPeer
 {
 public:
@@ -25,8 +37,15 @@ public:
 class EKF2ParameterUpdateTest : public ::testing::Test
 {
 protected:
+	virtual bool startBeforeFirstSecond() const { return false; }
+
 	void SetUp() override
 	{
+		if (startBeforeFirstSecond()) {
+			low_boot_clock = true;
+			_sample_us = low_boot_time_us = 100'000;
+		}
+
 		param_control_autosave(false);
 		setInt("EKF2_EV_CTRL", 0);
 		setInt("EKF2_HGT_REF", 1);
@@ -67,6 +86,7 @@ protected:
 	{
 		_first.reset();
 		_second.reset();
+		low_boot_clock = false;
 	}
 
 	static void setInt(const char *name, int32_t value)
@@ -86,6 +106,7 @@ protected:
 		const uint64_t end = _sample_us + duration_us;
 		while (_sample_us < end) {
 			_sample_us += 2500;
+			if (low_boot_clock) { low_boot_time_us = _sample_us; }
 			++_ticks;
 			if (_ticks % 20 == 0) {
 				vehicle_status_s status{};
@@ -195,6 +216,30 @@ protected:
 	uORB::Publication<vehicle_odometry_s> _pose{ORB_ID(vehicle_visual_odometry)};
 	std::unique_ptr<EKF2> _first, _second;
 };
+
+class EKF2EarlyBootParameterUpdateTest : public EKF2ParameterUpdateTest
+{
+protected:
+	bool startBeforeFirstSecond() const override { return true; }
+};
+
+TEST_F(EKF2EarlyBootParameterUpdateTest, NotifyingWritesReachBothInstancesAfterEarlyInitialization)
+{
+	expectFusion(false);
+	setInt("EKF2_HGT_REF", 3);
+	setInt("EKF2_EV_CTRL", 11);
+	spinWall(1'200'000);
+	expectControl(11);
+	for (const EKF2 *module : {_first.get(), _second.get()}) {
+		EXPECT_EQ(EKF2ParameterUpdateTestPeer::params(*module).height_sensor_ref, 3);
+	}
+	expectFusion(true);
+	setInt("EKF2_EV_CTRL", 0);
+	setInt("EKF2_HGT_REF", 1);
+	spinWall(1'200'000);
+	expectControl(0);
+	expectFusion(false);
+}
 
 TEST_F(EKF2ParameterUpdateTest, NotifyingWritesEnableBothRunningInstances)
 {

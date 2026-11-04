@@ -112,3 +112,7 @@ if(PX4_TESTING)
 endif()
 
 px4_add_functional_gtest(SRC uORBMessageFieldsTest.cpp LINKLIBS uORB)
+px4_add_functional_gtest(SRC SubscriptionIntervalTest.cpp LINKLIBS uORB)
+if(TARGET functional-SubscriptionInterval)
+	target_link_options(functional-SubscriptionInterval PRIVATE "-Wl,--wrap=hrt_absolute_time")
+endif()

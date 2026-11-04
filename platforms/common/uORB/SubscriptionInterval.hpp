@@ -126,7 +126,10 @@ public:
 		if (_subscription.copy(dst)) {
 			const hrt_abstime now = hrt_absolute_time();
 			// shift last update time forward, but don't let it get further behind than the interval
-			_last_update = math::constrain(_last_update + _interval_us, now - _interval_us, now);
+			// Before one interval has elapsed since boot, unsigned subtraction would
+			// wrap and put _last_update in the far future, blocking updates forever.
+			const hrt_abstime oldest_update = now > _interval_us ? now - _interval_us : 0;
+			_last_update = math::constrain(_last_update + _interval_us, oldest_update, now);
 			return true;
 		}
 
