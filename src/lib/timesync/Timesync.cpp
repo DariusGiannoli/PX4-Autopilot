@@ -42,8 +42,13 @@
 
 #include <stdlib.h>
 
-void Timesync::update(const uint64_t now_us, const int64_t remote_timestamp_ns, const int64_t originate_timestamp_ns)
+void Timesync::update(const uint64_t now_us, const int64_t remote_timestamp_ns, const int64_t originate_timestamp_ns,
+		     bool vision_clock_peer)
 {
+	if (vision_clock_peer) {
+		_vision_clock.update(now_us, remote_timestamp_ns, originate_timestamp_ns);
+	}
+
 	// Message originating from this system, compute time offset from it
 	if (remote_timestamp_ns > 0) {
 		// Calculate time offset between this system and the remote system, assuming RTT for
@@ -116,6 +121,14 @@ void Timesync::update(const uint64_t now_us, const int64_t remote_timestamp_ns, 
 		tsync_status.estimated_offset = (int64_t)_time_offset;
 		tsync_status.round_trip_time = rtt_us;
 		tsync_status.timestamp = hrt_absolute_time();
+		const auto vision = _vision_clock.status(now_us);
+		tsync_status.vision_clock_ready = vision.ready;
+		tsync_status.vision_clock_fault = static_cast<uint8_t>(vision.fault);
+		tsync_status.vision_clock_samples = vision.samples;
+		tsync_status.vision_clock_offset = vision.offset_us;
+		tsync_status.vision_clock_uncertainty_us = vision.uncertainty_us > UINT32_MAX ? UINT32_MAX : vision.uncertainty_us;
+		tsync_status.vision_clock_age_us = vision.age_us > UINT32_MAX ? UINT32_MAX : vision.age_us;
+		tsync_status.vision_clock_generation = vision.generation;
 
 		_timesync_status_pub.publish(tsync_status);
 	}

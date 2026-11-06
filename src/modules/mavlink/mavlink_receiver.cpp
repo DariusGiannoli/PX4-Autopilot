@@ -43,6 +43,7 @@
 #include <lib/airspeed/airspeed.h>
 #include <lib/conversion/rotation.h>
 #include <lib/systemlib/px4_macros.h>
+#include <lib/timesync/MorpheusVisionTiming.hpp>
 
 #include <math.h>
 #include <poll.h>
@@ -1305,7 +1306,16 @@ MavlinkReceiver::handle_message_odometry(mavlink_message_t *msg)
 	// fill vehicle_odometry from Mavlink ODOMETRY
 	vehicle_odometry_s odom{vehicle_odometry_empty};
 
-	odom.timestamp_sample = _mavlink_timesync.sync_stamp(odom_in.time_usec);
+	if (MorpheusVisionTiming::strict_input(msg->sysid, msg->compid, odom_in.estimator_type,
+					     odom_in.frame_id, odom_in.child_frame_id)) {
+		if (!_mavlink_timesync.sync_vision_stamp(odom_in.time_usec, odom.timestamp_sample)) {
+			// Unqualified/stale clock: do not relabel delayed vision as receipt time.
+			return;
+		}
+
+	} else {
+		odom.timestamp_sample = _mavlink_timesync.sync_stamp(odom_in.time_usec);
+	}
 
 	const matrix::Vector3f odom_in_p(odom_in.x, odom_in.y, odom_in.z);
 

@@ -34,5 +34,8 @@
 px4_add_library(timesync
 	Timesync.cpp
 	Timesync.hpp
+	BoundedVisionClock.hpp
+	BoundedVisionClock.cpp
+	MorpheusVisionTiming.hpp
 )
 target_link_libraries(timesync)

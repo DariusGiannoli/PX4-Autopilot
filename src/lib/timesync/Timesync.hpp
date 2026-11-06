@@ -47,6 +47,7 @@
 
 #include <math.h>
 #include <float.h>
+#include "BoundedVisionClock.hpp"
 
 using namespace time_literals;
 
@@ -96,7 +97,17 @@ public:
 	Timesync(uint8_t source = timesync_status_s::SOURCE_PROTOCOL_UNKNOWN) : _source(source) {};
 	~Timesync() = default;
 
-	void update(const uint64_t now_us, const int64_t remote_timestamp_ns, int64_t originate_timestamp_ns);
+	void update(const uint64_t now_us, const int64_t remote_timestamp_ns, int64_t originate_timestamp_ns,
+		    bool vision_clock_peer = false);
+
+	/** Private external-vision path: never substitute receipt time when unready. */
+	bool sync_vision_stamp(uint64_t usec, uint64_t now_us, uint64_t &mapped_us)
+	{
+		uint64_t uncertainty_us = 0;
+		return _vision_clock.convert(usec, now_us, mapped_us, uncertainty_us);
+	}
+
+	BoundedVisionClock::Status vision_clock_status(uint64_t now_us) { return _vision_clock.status(now_us); }
 
 	/**
 	 * Convert remote timestamp to local hrt time (usec)
@@ -141,4 +152,5 @@ private:
 	uint32_t _high_rtt_count{0};
 
 	uint8_t _source{};
+	BoundedVisionClock _vision_clock{};
 };
