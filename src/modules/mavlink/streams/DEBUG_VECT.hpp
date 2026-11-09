@@ -35,6 +35,8 @@
 #define DEBUG_VECT_HPP
 
 #include <uORB/topics/debug_vect.h>
+#include <uORB/topics/morphing_publisher_status.h>
+#include "../../morphing_arm_publisher/MeasuredArmCalibration.hpp"
 
 class MavlinkStreamDebugVect : public MavlinkStream
 {
@@ -49,16 +51,32 @@ public:
 
 	unsigned get_size() override
 	{
-		return _debug_sub.advertised() ? MAVLINK_MSG_ID_DEBUG_VECT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0;
+		return (_debug_sub.advertised() || _arm_sub.advertised()) ?
+		       2 * (MAVLINK_MSG_ID_DEBUG_VECT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
 	}
 
 private:
 	explicit MavlinkStreamDebugVect(Mavlink *mavlink) : MavlinkStream(mavlink) {}
 
 	uORB::Subscription _debug_sub{ORB_ID(debug_vect)};
+	uORB::Subscription _arm_sub{ORB_ID(morphing_publisher_status)};
 
 	bool send() override
 	{
+		bool sent = false;
+		morphing_publisher_status_s arm{};
+		if (_arm_sub.update(&arm)) {
+			mavlink_debug_vect_t msg{};
+			msg.time_usec = arm.timestamp;
+			memcpy(msg.name, "MORPHARM", 9);
+			// Timestamp is publisher-owned: a stopped module cannot look alive.
+			msg.z = arm.timestamp >= arm.timestamp_angle ? (arm.timestamp - arm.timestamp_angle) * 1e-6f : -1.f;
+			msg.x = arm.enabled && arm.calibration_valid && arm.initialized_mask == 15
+				&& !arm.stale && arm.timestamp_angle > 0 && msg.z >= 0.f && msg.z <= .1f;
+			msg.y = morphing_publisher::measured::CALIBRATION_ID;
+			mavlink_msg_debug_vect_send_struct(_mavlink->get_channel(), &msg);
+			sent = true;
+		}
 		debug_vect_s debug;
 
 		if (_debug_sub.update(&debug)) {
@@ -75,7 +93,7 @@ private:
 			return true;
 		}
 
-		return false;
+		return sent;
 	}
 };
 

@@ -115,7 +115,10 @@ void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uin
 	for (unsigned i = 0; i < 4; ++i) {
 		const float value = values[i];
 		if (!PX4_ISFINITE(value) || fabsf(value) > 1.f) { valid = false; continue; }
-		const float virtual_pwm = lroundf(1450.f + 300.f * value) - (morphing_publisher::measured::NEUTRAL_PWM[i] - 1450.f);
+		// Wire encoding stays 1450 + 300*u. Table coordinates use the
+		// calibration's reference neutral, exactly as MeasuredArmModel::reset.
+		const float virtual_pwm = lroundf(1450.f + 300.f * value)
+			- (morphing_publisher::measured::NEUTRAL_PWM[i] - morphing_publisher::measured::REFERENCE_NEUTRAL_PWM);
 		valid = valid && virtual_pwm >= morphing_publisher::measured::PWM[0]
 			&& virtual_pwm <= morphing_publisher::measured::PWM[morphing_publisher::measured::COUNT-1];
 		if (!_model_started) { valid = valid && lroundf(1450.f + 300.f * value) == morphing_publisher::measured::NEUTRAL_PWM[i]; }

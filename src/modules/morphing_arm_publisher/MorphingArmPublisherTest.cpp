@@ -332,8 +332,9 @@ TEST_F(MorphingArmPublisherTest, MeasuredAllFourChannelsAndDirectionSigns)
     }
     morphing_arm_state_s state{};
     ASSERT_TRUE(sub.update(&state));
-    // Measured lookup expectations for PWM 1480,1570,1510,1540 in canonical order.
-    const float degrees[] = {3.141499f, 13.020228f, 6.550470f, -9.800842f};
+    // RR-reference table at 1530,1620,1560,1590; physical channel trims
+    // and FL direction are independent of the table reference neutral.
+    const float degrees[] = {1.373548f, 11.517634f, 4.810225f, -8.267678f};
     for (unsigned i = 0; i < 4; ++i) {
         EXPECT_NEAR(state.angle[i], degrees[i] * .01745329252f, .00035f);
     }
@@ -366,8 +367,8 @@ TEST_F(MorphingArmPublisherTest, TrimmedTwentyDegreeReversalsPublishUnclippedGeo
     float peak = 0.f;
     // Virtual reference-table endpoints near +20 / -20 deg; command() adds trims.
     // Full reversals stress the dynamics more than the normal 3-deg ramp.
-    for (int pwm : {1636, 1279, 1636, 1279}) {
-        const float wire = (pwm - 1450.f) / 300.f;
+    for (int pwm : {1698, 1310, 1698, 1310}) {
+        const float wire = (pwm - morphing_publisher::measured::REFERENCE_NEUTRAL_PWM) / 300.f;
         for (unsigned tick = 0; tick < 60; ++tick) {
             now += 10000;
             if (tick % 10 == 0) {
@@ -402,4 +403,72 @@ TEST_F(MorphingArmPublisherTest, PredictionOutsideEnvelopeStillFaults)
     MorphingArmPublisherTestPeer::advance(module, 1000);
     EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
     EXPECT_TRUE(MorphingArmPublisherTestPeer::status(module).stale);
+}
+
+TEST_F(MorphingArmPublisherTest, RRLowPwmAndReversalsKeepProductionPublisherAndAllocatorUpdating)
+{
+    measuredConfig();
+    MorphingArmPublisher module;
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
+    ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
+    MorphingArmPublisherTestPeer::resetTime(module);
+    uORB::Subscription sub{ORB_ID(morphing_arm_state)};
+    uint64_t now = 1000;
+    auto input = command(now, 0.f, 0.f, 0.f, 0.f);
+    MorphingArmPublisherTestPeer::process(module, input, now);
+    MorphingArmPublisherTestPeer::advance(module, now);
+    morphing_arm_state_s state{};
+    ASSERT_TRUE(sub.update(&state));
+    float low = 0.f, high = 0.f;
+    for (unsigned motor = 0; motor < 4; ++motor) {
+        char name[17]; snprintf(name, sizeof(name), "CA_ROTOR%u_CT", motor); setFloat(name, 6.5f);
+    }
+    ActuatorEffectivenessMorphingQuad provider(nullptr);
+    uORB::Subscription geometry_sub{ORB_ID(morphing_geometry)};
+    uORB::Subscription matrix_sub{ORB_ID(morphing_allocation_matrix)};
+    int previous_pwm = 1500;
+    // Actual physical RR PWM, not pre-translated table coordinates. Both
+    // branch reversals cross the old erroneous 1200-us command gate.
+    for (int target : {1199, 1180, 1740, 1180, 1500}) {
+        for (unsigned tick = 1; tick <= 700; ++tick) {
+            now += 10000;
+            if (tick % 10 == 0) {
+                const float fraction = fminf(tick / 500.f, 1.f);
+                const float pwm = lroundf(previous_pwm + (target - previous_pwm) * fraction);
+                input = command(now, 0.f, 0.f, 0.f, 0.f);
+                input.param4 = (pwm - 1450.f) / 300.f;
+                MorphingArmPublisherTestPeer::process(module, input, now);
+            }
+            MorphingArmPublisherTestPeer::advance(module, now);
+            ASSERT_FALSE(MorphingArmPublisherTestPeer::fault(module)) << "RR PWM " << target << " tick " << tick;
+            ASSERT_TRUE(sub.update(&state));
+            EXPECT_EQ(state.timestamp, now);
+            EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 15);
+            EXPECT_FALSE(MorphingArmPublisherTestPeer::status(module).stale);
+            for (unsigned other : {0u, 2u, 3u}) { EXPECT_NEAR(state.angle[other], 0.f, 1e-6f); }
+            low = fminf(low, state.angle[1]); high = fmaxf(high, state.angle[1]);
+            ActuatorEffectiveness::Configuration configuration{};
+            ASSERT_TRUE(provider.getEffectivenessMatrix(configuration, EffectivenessUpdateReason::CONFIGURATION_UPDATE));
+            morphing_geometry_s geometry{};
+            ASSERT_TRUE(geometry_sub.update(&geometry));
+            EXPECT_EQ(geometry.timestamp_input, now);
+            EXPECT_EQ(geometry.timestamp_angle, now);
+            EXPECT_EQ(geometry.input_result, static_cast<uint8_t>(morphing_geometry_s::INPUT_ACCEPTED));
+            EXPECT_NEAR(geometry.angle[1], state.angle[1], 1e-7f);
+            provider.effectivenessMatrixApplied(0, configuration.effectiveness_matrices[0], 0);
+            morphing_allocation_matrix_s applied{};
+            ASSERT_TRUE(matrix_sub.update(&applied));
+            EXPECT_EQ(applied.timestamp_angle, now);
+            EXPECT_GT(applied.matrix_generation, 0u);
+        }
+        previous_pwm = target;
+    }
+    EXPECT_LT(low, -.58f); EXPECT_GT(high, .4f);
+    EXPECT_EQ(MorphingArmPublisherTestPeer::status(module).rejected_commands, 0u);
+    // A truly out-of-table request must still latch the fault.
+    input = command(now + 1000, 0.f, 0.f, 0.f, 0.f);
+    input.param4 = (1149.f - 1450.f) / 300.f;
+    MorphingArmPublisherTestPeer::process(module, input, now + 1000);
+    EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
+    EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
 }
