@@ -9,10 +9,10 @@ namespace morphing_publisher {
 class MeasuredArmModel {
 public:
 	MeasuredArmModel() { reset(); }
-	void reset(float neutral_pwm = 1450.f)
+	void reset(float neutral_pwm = measured::REFERENCE_NEUTRAL_PWM)
 	{
-		_trim = neutral_pwm - 1450.f;
-		_pwm = 1450.f; _held = -measured::BIAS / measured::GAIN;
+		_trim = neutral_pwm - measured::REFERENCE_NEUTRAL_PWM;
+		_pwm = measured::REFERENCE_NEUTRAL_PWM; _held = -measured::BIAS / measured::GAIN;
 		_play = _held - measured::ELASTIC * .5f * (lookup(_pwm, measured::LOWER) + lookup(_pwm, measured::UPPER));
 		angle = 0.f; velocity = 0.f;
 	}

@@ -25,7 +25,7 @@ parameters:
             type: enum
             values:
                 0: Legacy three-point
-                1: Shared FR measured model
+                1: Shared RR measured model (1210833)
             default: 0
             reboot_required: true
         MARM_CAL_ID:
@@ -33,9 +33,9 @@ parameters:
                 short: Compiled measured arm calibration ID
                 long: Must match the compiled model and host configuration. Do not change manually to bypass a version mismatch.
             type: int32
-            min: 1210832
-            max: 1210832
-            default: 1210832
+            min: 1210833
+            max: 1210833
+            default: 1210833
             reboot_required: true
         MARM_FR_DIR:
             description:
