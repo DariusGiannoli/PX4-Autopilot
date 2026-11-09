@@ -77,7 +77,7 @@ bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32
 	const char *arms[] = {"FR", "RR", "RL", "FL"};
 	const char *fields[] = {"FUNC", "MIN", "MAX", "DIS"};
 	for (unsigned i = 0; i < 4; ++i) {
-		const int32_t expected[] = {functions[i], 1150, 1750, 1450};
+		const int32_t expected[] = {functions[i], 1150, 1750, morphing_publisher::measured::NEUTRAL_PWM[i]};
 		for (unsigned j = 0; j < 4; ++j) {
 			char name[17]; snprintf(name, sizeof(name), "PWM_MAIN_%s%u", fields[j], pins[i]);
 			int32_t value = 0;
@@ -89,6 +89,7 @@ bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32
 		char name[17]; snprintf(name, sizeof(name), "MARM_%s_DIR", arms[i]);
 		if (read_int(name, &_directions[i]) != PX4_OK
 		    || (_directions[i] != -1 && _directions[i] != 1)) { return false; }
+		_models[i].reset(static_cast<float>(morphing_publisher::measured::NEUTRAL_PWM[i]));
 	}
 	return true;
 }
@@ -111,9 +112,13 @@ void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uin
 	// MAVLink actuator sets FR RL FL RR -> canonical allocator FR RR RL FL.
 	const float values[] = {command.param1, command.param4, command.param2, command.param3};
 	bool valid = !_model_fault;
-	for (float value : values) {
-		valid = valid && PX4_ISFINITE(value) && fabsf(value) <= 1.f;
-		if (!_model_started) { valid = valid && fabsf(value) <= 0.f; }
+	for (unsigned i = 0; i < 4; ++i) {
+		const float value = values[i];
+		if (!PX4_ISFINITE(value) || fabsf(value) > 1.f) { valid = false; continue; }
+		const float virtual_pwm = lroundf(1450.f + 300.f * value) - (morphing_publisher::measured::NEUTRAL_PWM[i] - 1450.f);
+		valid = valid && virtual_pwm >= morphing_publisher::measured::PWM[0]
+			&& virtual_pwm <= morphing_publisher::measured::PWM[morphing_publisher::measured::COUNT-1];
+		if (!_model_started) { valid = valid && lroundf(1450.f + 300.f * value) == morphing_publisher::measured::NEUTRAL_PWM[i]; }
 	}
 	if (!valid) {
 		++_status.rejected_commands; _state.invalidate(); _status.stale = true;
@@ -126,7 +131,9 @@ void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uin
 		advanceMeasured(command.timestamp);
 		if (_model_fault) { return; }
 	}
-	for (unsigned i = 0; i < 4; ++i) { _models[i].accept(values[i]); }
+	for (unsigned i = 0; i < 4; ++i) {
+		if (!_models[i].accept(values[i])) { _model_fault = true; _state.invalidate(); _status.stale = true; return; }
+	}
 	_state.initialized_mask = 15;
 	_status.timestamp_command = command.timestamp;
 	_status.stale = false;

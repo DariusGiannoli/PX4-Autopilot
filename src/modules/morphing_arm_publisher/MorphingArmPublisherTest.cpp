@@ -6,6 +6,7 @@
 // SITL has no hardware MIN/MAX/DIS parameters. Substitute their storage only;
 // execute the production configuration validator and command/model path.
 static std::map<std::string, int32_t> measured_parameters;
+static bool trimmed_commands = false;
 static int measured_read(const char *name, int32_t *value)
 {
     auto found = measured_parameters.find(name);
@@ -39,6 +40,7 @@ protected:
 	void SetUp() override
 	{
 		param_control_autosave(false);
+        trimmed_commands = false;
 		setInt("CA_AIRFRAME", 13);
 		setInt("CA_ROTOR_COUNT", 4);
 		setInt("MORPH_PUB_EN", 1);
@@ -58,6 +60,7 @@ protected:
 	static void measuredConfig()
 	{
 		measured_parameters.clear();
+        trimmed_commands = true;
 		measured_parameters["MARM_CAL_ID"] = morphing_publisher::measured::CALIBRATION_ID;
 		measured_parameters["PWM_MAIN_REV"] = 0;
 		measured_parameters["PWM_MAIN_TIM1"] = 50;
@@ -68,7 +71,7 @@ protected:
 			snprintf(name, sizeof(name), "PWM_MAIN_FUNC%u", pins[i]); measured_parameters[name] = 301+i;
 			snprintf(name, sizeof(name), "PWM_MAIN_MIN%u", pins[i]); measured_parameters[name] = 1150;
 			snprintf(name, sizeof(name), "PWM_MAIN_MAX%u", pins[i]); measured_parameters[name] = 1750;
-			snprintf(name, sizeof(name), "PWM_MAIN_DIS%u", pins[i]); measured_parameters[name] = 1450;
+			snprintf(name, sizeof(name), "PWM_MAIN_DIS%u", pins[i]); measured_parameters[name] = morphing_publisher::measured::NEUTRAL_PWM[morphing_quad::MOTOR_TO_ARM[i]];
 		}
 		for (const char *arm : {"FR", "RR", "RL", "FL"}) {
 			char name[17]; snprintf(name, sizeof(name), "MARM_%s_DIR", arm); measured_parameters[name] = 1;
@@ -77,6 +80,7 @@ protected:
 	static vehicle_command_s command(uint64_t timestamp, float a, float b, float c, float d)
 	{
 		vehicle_command_s out{};
+        if (trimmed_commands) { a -= 50.f/300.f; b += 100.f/300.f; c += 50.f/300.f; d += 50.f/300.f; }
 		out.timestamp = timestamp;
 		out.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
 		out.param1 = a; out.param2 = b; out.param3 = c; out.param4 = d;
@@ -303,7 +307,7 @@ TEST_F(MorphingArmPublisherTest, MeasuredConfigurationAndInitialNeutralGate)
     MorphingArmPublisher module;
     measured_parameters["PWM_MAIN_DIS5"] = 1300;
     EXPECT_FALSE(MorphingArmPublisherTestPeer::measured(module));
-    measured_parameters["PWM_MAIN_DIS5"] = 1450;
+    measured_parameters["PWM_MAIN_DIS5"] = 1500;
     ASSERT_TRUE(MorphingArmPublisherTestPeer::configure(module));
     ASSERT_TRUE(MorphingArmPublisherTestPeer::measured(module));
     MorphingArmPublisherTestPeer::resetTime(module);
@@ -349,7 +353,7 @@ TEST_F(MorphingArmPublisherTest, MeasuredSchedulerGapStopsGeometry)
     EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
 }
 
-TEST_F(MorphingArmPublisherTest, ThirtyDegreeReversalsPublishUnclippedGeometry)
+TEST_F(MorphingArmPublisherTest, TrimmedTwentyDegreeReversalsPublishUnclippedGeometry)
 {
     measuredConfig();
     MorphingArmPublisher module;
@@ -360,9 +364,9 @@ TEST_F(MorphingArmPublisherTest, ThirtyDegreeReversalsPublishUnclippedGeometry)
     MorphingArmPublisherTestPeer::process(module, command(1000, 0.f, 0.f, 0.f, 0.f), 1000);
     uint64_t now = 1000;
     float peak = 0.f;
-    // Actual rounded inverse endpoints from host calibration: +30 / -30 deg.
+    // Virtual reference-table endpoints near +20 / -20 deg; command() adds trims.
     // Full reversals stress the dynamics more than the normal 3-deg ramp.
-    for (int pwm : {1743, 1172, 1743, 1172}) {
+    for (int pwm : {1636, 1279, 1636, 1279}) {
         const float wire = (pwm - 1450.f) / 300.f;
         for (unsigned tick = 0; tick < 60; ++tick) {
             now += 10000;
@@ -382,7 +386,7 @@ TEST_F(MorphingArmPublisherTest, ThirtyDegreeReversalsPublishUnclippedGeometry)
                                               {{-.05f, -.05f, .05f, .05f}}, {}, geometry));
         }
     }
-    EXPECT_GT(peak, .523598776f); // Overshoot was published, not hidden by clipping.
+    EXPECT_GT(peak, .34f); // Overshoot was published, not hidden by clipping.
     EXPECT_LT(peak, morphing_quad::MAX_ANGLE_RAD);
 }
 

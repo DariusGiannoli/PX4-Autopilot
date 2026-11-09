@@ -21,7 +21,7 @@ parameters:
         MARM_MODEL:
             description:
                 short: Arm mapping model
-                long: 0 uses legacy FR RR RL FL three-point calibration. 1 uses the shared measured FR model with actuator sets FR RL FL RR, MAIN 7 6 8 5, neutral 1450 and PWM 1150..1750. Restart from physical neutral after changing. No measured feedback; bench dynamics exclude host/mocap delay.
+                long: 0 uses legacy FR RR RL FL three-point calibration. 1 uses the shared measured FR model with actuator sets FR RL FL RR, MAIN 7 6 8 5, per-arm neutral FR/RR/RL/FL 1400/1500/1550/1500 and PWM 1150..1750. Restart from physical neutral after changing. No measured feedback; bench dynamics exclude host/mocap delay.
             type: enum
             values:
                 0: Legacy three-point
@@ -33,9 +33,9 @@ parameters:
                 short: Compiled measured arm calibration ID
                 long: Must match the compiled model and host configuration. Do not change manually to bypass a version mismatch.
             type: int32
-            min: 1210831
-            max: 1210831
-            default: 1210831
+            min: 1210832
+            max: 1210832
+            default: 1210832
             reboot_required: true
         MARM_FR_DIR:
             description:

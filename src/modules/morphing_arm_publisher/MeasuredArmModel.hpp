@@ -9,8 +9,9 @@ namespace morphing_publisher {
 class MeasuredArmModel {
 public:
 	MeasuredArmModel() { reset(); }
-	void reset()
+	void reset(float neutral_pwm = 1450.f)
 	{
+		_trim = neutral_pwm - 1450.f;
 		_pwm = 1450.f; _held = -measured::BIAS / measured::GAIN;
 		_play = _held - measured::ELASTIC * .5f * (lookup(_pwm, measured::LOWER) + lookup(_pwm, measured::UPPER));
 		angle = 0.f; velocity = 0.f;
@@ -18,7 +19,9 @@ public:
 	bool accept(float wire)
 	{
 		if (!std::isfinite(wire) || std::fabs(wire) > 1.f) { return false; }
-		const float pwm = static_cast<float>(lroundf(1450.f + 300.f * wire));
+		const float physical_pwm = static_cast<float>(lroundf(1450.f + 300.f * wire));
+		const float pwm = physical_pwm - _trim;
+		if (physical_pwm < 1150.f || physical_pwm > 1750.f || pwm < measured::PWM[0] || pwm > measured::PWM[measured::COUNT-1]) { return false; }
 		if (static_cast<int>(pwm) == static_cast<int>(_pwm)) { return true; }
 		const float lo = lookup(pwm, measured::LOWER), hi = lookup(pwm, measured::UPPER);
 		const float elastic = measured::ELASTIC * .5f * (lo + hi);
@@ -61,6 +64,6 @@ private:
 		}
 		return values[measured::COUNT-1];
 	}
-	float _pwm{1450.f}, _held{0.f}, _play{0.f};
+	float _pwm{1450.f}, _held{0.f}, _play{0.f}, _trim{0.f};
 };
 } // namespace morphing_publisher
