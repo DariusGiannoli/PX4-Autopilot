@@ -316,6 +316,27 @@ TEST_F(MorphingArmPublisherTest, MeasuredConfigurationAndInitialNeutralGate)
     EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
 }
 
+TEST_F(MorphingArmPublisherTest, MeasuredPwmRefreshRequiresMatchedSupportedGroups)
+{
+    for (int32_t rate : {50, 200}) {
+        measuredConfig();
+        measured_parameters["PWM_MAIN_TIM1"] = rate;
+        measured_parameters["PWM_MAIN_TIM2"] = rate;
+        MorphingArmPublisher module;
+        EXPECT_TRUE(MorphingArmPublisherTestPeer::measured(module)) << "rate=" << rate;
+    }
+    const int32_t rejected[][2] = {{50, 200}, {200, 50}, {100, 100},
+                                 {400, 400}, {0, 0}, {-1, -1}, {200, 400}};
+    for (const auto &rates : rejected) {
+        measuredConfig();
+        measured_parameters["PWM_MAIN_TIM1"] = rates[0];
+        measured_parameters["PWM_MAIN_TIM2"] = rates[1];
+        MorphingArmPublisher module;
+        EXPECT_FALSE(MorphingArmPublisherTestPeer::measured(module))
+                << "rates=" << rates[0] << "," << rates[1];
+    }
+}
+
 TEST_F(MorphingArmPublisherTest, MeasuredAllFourChannelsAndDirectionSigns)
 {
     measuredConfig();

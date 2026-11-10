@@ -22,7 +22,9 @@ configuration file, not executed automatically by the flight script.
 | 3 | FL | 8 | 1150 / 1500 / 1750 |
 | 4 | RR | 5 | 1150 / 1500 / 1750 |
 
-MAIN 5–6 and MAIN 7–8 PWM timer groups must both be 50 Hz.
+MAIN 5–6 and MAIN 7–8 PWM timer groups must match at either 50 Hz or 200 Hz.
+The original dynamic calibration was collected at 50 Hz; accepting the 200 Hz
+configuration does not establish its transient accuracy at that refresh rate.
 
 The prior 1300/1700 disarmed values were temporary clearance positions in the
 FR experiment. They are not used as operational neutral calibration.

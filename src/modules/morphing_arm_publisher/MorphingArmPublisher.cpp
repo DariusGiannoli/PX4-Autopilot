@@ -71,7 +71,7 @@ bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32
 	    || read_int("PWM_MAIN_REV", &reverse) != PX4_OK || reverse != 0) { return false; }
 	int32_t rate1 = 0, rate2 = 0;
 	if (read_int("PWM_MAIN_TIM1", &rate1) != PX4_OK || read_int("PWM_MAIN_TIM2", &rate2) != PX4_OK
-	    || rate1 != 50 || rate2 != 50) { return false; }
+	    || rate1 != rate2 || (rate1 != 50 && rate1 != 200)) { return false; }
 	const unsigned pins[] = {7, 5, 6, 8}; // canonical FR RR RL FL
 	const int32_t functions[] = {301, 304, 302, 303};
 	const char *arms[] = {"FR", "RR", "RL", "FL"};
