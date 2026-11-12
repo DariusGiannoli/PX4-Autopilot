@@ -65,14 +65,14 @@ protected:
 		measured_parameters["PWM_MAIN_REV"] = 0;
 		measured_parameters["PWM_MAIN_TIM1"] = 50;
 		measured_parameters["PWM_MAIN_TIM2"] = 50;
-		const unsigned pins[] = {7, 6, 8, 5};
 		for (unsigned i = 0; i < 4; ++i) {
-			char name[17];
-			snprintf(name, sizeof(name), "PWM_MAIN_FUNC%u", pins[i]); measured_parameters[name] = 301+i;
-			snprintf(name, sizeof(name), "PWM_MAIN_MIN%u", pins[i]); measured_parameters[name] = 1150;
-			snprintf(name, sizeof(name), "PWM_MAIN_MAX%u", pins[i]); measured_parameters[name] = 1750;
-			snprintf(name, sizeof(name), "PWM_MAIN_DIS%u", pins[i]); measured_parameters[name] = morphing_publisher::measured::NEUTRAL_PWM[morphing_quad::MOTOR_TO_ARM[i]];
-		}
+            const unsigned pin = morphing_publisher::measured::OUTPUT_PINS[i];
+            char name[17];
+            snprintf(name, sizeof(name), "PWM_MAIN_FUNC%u", pin); measured_parameters[name] = morphing_publisher::measured::OUTPUT_FUNCTIONS[i];
+            snprintf(name, sizeof(name), "PWM_MAIN_MIN%u", pin); measured_parameters[name] = 1150;
+            snprintf(name, sizeof(name), "PWM_MAIN_MAX%u", pin); measured_parameters[name] = 1750;
+            snprintf(name, sizeof(name), "PWM_MAIN_DIS%u", pin); measured_parameters[name] = morphing_publisher::measured::NEUTRAL_PWM[i];
+        }
 		for (const char *arm : {"FR", "RR", "RL", "FL"}) {
 			char name[17]; snprintf(name, sizeof(name), "MARM_%s_DIR", arm); measured_parameters[name] = 1;
 		}
@@ -80,7 +80,16 @@ protected:
 	static vehicle_command_s command(uint64_t timestamp, float a, float b, float c, float d)
 	{
 		vehicle_command_s out{};
-        if (trimmed_commands) { a -= 50.f/300.f; b += 100.f/300.f; c += 50.f/300.f; d += 50.f/300.f; }
+        if (trimmed_commands) {
+            // Keep fixture arguments in historical FR/RL/FL/RR logical order.
+            const float canonical[] = {a, d, b, c};
+            float channels[4]{};
+            for (unsigned i = 0; i < 4; ++i) {
+                channels[morphing_publisher::measured::COMMAND_INDEX[i]] = canonical[i]
+                    + (morphing_publisher::measured::NEUTRAL_PWM[i] - 1450.f) / 300.f;
+            }
+            a = channels[0]; b = channels[1]; c = channels[2]; d = channels[3];
+        }
 		out.timestamp = timestamp;
 		out.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
 		out.param1 = a; out.param2 = b; out.param3 = c; out.param4 = d;
@@ -272,7 +281,8 @@ TEST_F(MorphingArmPublisherTest, MeasuredRoutingAndFiniteMotion)
     MorphingArmPublisherTestPeer::advance(module, 1000);
     ASSERT_TRUE(sub.update(&state));
     for (float angle : state.angle) { EXPECT_NEAR(angle, 0.f, 1e-6f); }
-    // Set2 is RL. New target must not instantly change estimated geometry.
+    // Fixture second argument selects RL; generated routing sends it to set1.
+    // New target must not instantly change estimated geometry.
     MorphingArmPublisherTestPeer::process(module, command(10000, 0.f, .3f, 0.f, 0.f), 10000);
     MorphingArmPublisherTestPeer::advance(module, 10000);
     ASSERT_TRUE(sub.update(&state));
@@ -457,7 +467,7 @@ TEST_F(MorphingArmPublisherTest, RRLowPwmAndReversalsKeepProductionPublisherAndA
                 const float fraction = fminf(tick / 500.f, 1.f);
                 const float pwm = lroundf(previous_pwm + (target - previous_pwm) * fraction);
                 input = command(now, 0.f, 0.f, 0.f, 0.f);
-                input.param4 = (pwm - 1450.f) / 300.f;
+                input.param3 = (pwm - 1450.f) / 300.f;
                 MorphingArmPublisherTestPeer::process(module, input, now);
             }
             MorphingArmPublisherTestPeer::advance(module, now);
@@ -488,7 +498,7 @@ TEST_F(MorphingArmPublisherTest, RRLowPwmAndReversalsKeepProductionPublisherAndA
     EXPECT_EQ(MorphingArmPublisherTestPeer::status(module).rejected_commands, 0u);
     // A truly out-of-table request must still latch the fault.
     input = command(now + 1000, 0.f, 0.f, 0.f, 0.f);
-    input.param4 = (1149.f - 1450.f) / 300.f;
+    input.param3 = (1149.f - 1450.f) / 300.f;
     MorphingArmPublisherTestPeer::process(module, input, now + 1000);
     EXPECT_TRUE(MorphingArmPublisherTestPeer::fault(module));
     EXPECT_EQ(MorphingArmPublisherTestPeer::mask(module), 0);
