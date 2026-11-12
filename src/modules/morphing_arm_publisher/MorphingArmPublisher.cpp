@@ -72,8 +72,8 @@ bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32
 	int32_t rate1 = 0, rate2 = 0;
 	if (read_int("PWM_MAIN_TIM1", &rate1) != PX4_OK || read_int("PWM_MAIN_TIM2", &rate2) != PX4_OK
 	    || rate1 != rate2 || (rate1 != 50 && rate1 != 200)) { return false; }
-	const unsigned pins[] = {7, 5, 6, 8}; // canonical FR RR RL FL
-	const int32_t functions[] = {301, 304, 302, 303};
+	const auto &pins = morphing_publisher::measured::OUTPUT_PINS; // canonical FR RR RL FL
+	const auto &functions = morphing_publisher::measured::OUTPUT_FUNCTIONS;
 	const char *arms[] = {"FR", "RR", "RL", "FL"};
 	const char *fields[] = {"FUNC", "MIN", "MAX", "DIS"};
 	for (unsigned i = 0; i < 4; ++i) {
@@ -109,8 +109,10 @@ void MorphingArmPublisher::advanceMeasured(uint64_t now)
 
 void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uint64_t now)
 {
-	// MAVLink actuator sets FR RL FL RR -> canonical allocator FR RR RL FL.
-	const float values[] = {command.param1, command.param4, command.param2, command.param3};
+	// Generated actuator-set routing -> canonical allocator FR RR RL FL.
+	const float channels[] = {command.param1, command.param2, command.param3, command.param4};
+	const auto &index = morphing_publisher::measured::COMMAND_INDEX;
+	const float values[] = {channels[index[0]], channels[index[1]], channels[index[2]], channels[index[3]]};
 	bool valid = !_model_fault;
 	for (unsigned i = 0; i < 4; ++i) {
 		const float value = values[i];
@@ -281,7 +283,7 @@ void MorphingArmPublisher::Run()
 
 int MorphingArmPublisher::print_status()
 {
-	PX4_INFO("MAVLink group 0: %s; no position feedback", _measured ? "FR RL FL RR (measured model)" : "FR RR RL FL (legacy)");
+	PX4_INFO("MAVLink group 0: %s; no position feedback", _measured ? "RL FR RR FL (measured model)" : "FR RR RL FL (legacy)");
 	if (_measured) { PX4_INFO("calibration=%d model_fault=%d; host/mocap delay excluded", morphing_publisher::measured::CALIBRATION_ID, _model_fault); }
 	PX4_INFO("enabled=%d calibration=%d initialized=0x%x stale=%d published=%lu rejected=%lu",
 		 enabled(), _status.calibration_valid, _state.initialized_mask, _status.stale,
