@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2017-2022 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2024 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -96,7 +96,7 @@ __EXPORT extern int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq
 /**
  * Set Dshot motor data, used by up_dshot_motor_data_set() and up_dshot_motor_command() (internal method)
  */
-__EXPORT extern void dshot_motor_data_set(unsigned motor_number, uint16_t throttle, bool telemetry);
+__EXPORT extern void dshot_motor_data_set(unsigned channel, uint16_t throttle, bool telemetry);
 
 /**
  * Set the current dshot throttle value for a channel (motor).
@@ -144,12 +144,26 @@ __EXPORT extern void up_bdshot_status(void);
 
 
 /**
+ * Get how many bidirectional erpm channels are ready
+ *
+ * When we get the erpm round-robin style, we need to get
+ * and publish the erpms less often.
+ *
+ * @return <0 on error, OK on succes
+ */
+__EXPORT extern int up_bdshot_num_erpm_ready(void);
+
+
+/**
  * Get bidrectional dshot erpm for a channel
  * @param channel	Dshot channel
  * @param erpm		pointer to write the erpm value
  * @return <0 on error, OK on succes
  */
 __EXPORT extern int up_bdshot_get_erpm(uint8_t channel, int *erpm);
+
+/** Decoded reply and FC capture-processing time (not an ESC measurement clock). */
+__EXPORT extern int up_bdshot_get_erpm_sample(uint8_t channel, int *erpm, uint64_t *sample_time);
 
 
 /**

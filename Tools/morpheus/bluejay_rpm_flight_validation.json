@@ -1,0 +1,61 @@
+{
+  "scope": "Preceding STOP-only diagnostic firmware, not qualification of this flight binary.",
+  "bench_date": "2026-11-14",
+  "bench_commit": "dd60b9dfd2c9f092d3c78bc36b17d849e5385881",
+  "data_sha256": "bbbe7248e55dadac23e20e8f72bf378ca23d79fece1c9c504c5021fecec165e6",
+  "motor4_pooled_valid_fraction": 0.9131728518890003,
+  "slow_rate_outcome": "No improvement; keep original command cadence.",
+  "motor4_missing_captures_remain": true,
+  "tests": {
+    "test_bdshot_offline.py": {
+      "passed": true,
+      "valid_payloads": 4096,
+      "corrupt_crc_cases": 16384,
+      "transmit_packet_cases": 262144,
+      "normal_encoder_all_uint16_inputs": true,
+      "invalid_gcr_symbol_cases": 384,
+      "malformed_capture_fuzz_cases": 10000,
+      "validity_cases": [
+        "measured_stop",
+        "valid_rotation",
+        "invalid_no_refresh",
+        "single_glitch_online",
+        "stale_offline",
+        "future_rejected",
+        "decode_timestamp_preserved",
+        "invalid_channel_bounds"
+      ],
+      "undefined_behavior_sanitizer": true,
+      "hardware_validation": false
+    },
+    "test_bdshot_flight_callbacks.py": {
+      "passed": true,
+      "callback_cases": 64,
+      "checks": [
+        "early_release_before_DMA_cleanup",
+        "same_GPIO_DMA_timer_channel",
+        "only_initialized_motor_pins",
+        "restore_outputs_and_process_selected_channel",
+        "ignore_servo_and_invalid_channels",
+        "empty_mask_terminates",
+        "missing_mapping_not_output_zero"
+      ],
+      "hardware_validation": false
+    },
+    "test_dshot_flight_driver.py": {
+      "passed": true,
+      "driver_cases": 547,
+      "checks": [
+        "stopped_override_for_nonzero_mixer_outputs",
+        "disabled_outputs_send_nothing",
+        "normal_throttle_and_limits",
+        "physical_output_to_logical_motor_mapping",
+        "capture_processing_timestamps_preserved",
+        "invalid_RPM_not_relabelled_zero_or_fresh",
+        "armed_flags_follow_real_arming",
+        "invalid_pole_count_no_divide_by_zero"
+      ],
+      "hardware_io": false
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "schema": "morpheus_bluejay_rpm_flight_candidate_v2",
+  "base_commit": "ba91960c56f49fbad4108847a155075f7029a783",
+  "board": "hkust_nxt-dual",
+  "esc": "MicoAir33A4IN1 Bluejay48K",
+  "branch": "codex/nxt-bluejay-rpm-flight-20261114",
+  "qualification": "Software regression tests and board build; stopped-motor hardware check pending; no spinning-motor or flight qualification.",
+  "upstream_commits": [
+    "543851db50231197060b57ada50f84518565bece",
+    "7cb7977263dbaa56dd2d76b4bd3d33dbbf79747b",
+    "64989c3b8d062561523a71a68a999b446e50a91e",
+    "6e7638c14beb8758add5960a27e22df2d49cd088",
+    "bb423bc0075b8209cdcd26e6e2c3306a7857aa4f"
+  ],
+  "backport_adaptations": [
+    "Append inverted-DShot and capture-DMA enum modes after existing Other9; no upstream RPM enum introduced.",
+    "TIM1 is timer index0; four motor outputs share this timer. TIM2/TIM3 remain PWM servo outputs.",
+    "Reject invalid GCR symbols before nibble shifting; reject oversized/zero run lengths and handle16bit capture wrap.",
+    "Invalid captures do not refresh per-ESC samples or masquerade as measured zero RPM.",
+    "100ms valid-reply freshness for online flags, snapshot ISR-written RPM/time under a critical section.",
+    "Esc armed flags reflect actual arming; no unconditional armed flags while disarmed.",
+    "Disable unused rover position controller to fit flash."
+  ],
+  "esc_motor_order_by_actuator_function": {
+    "101": "FR motor1",
+    "102": "RL motor2",
+    "103": "FL motor3",
+    "104": "RR motor4"
+  },
+  "hardware_output_functions": [
+    101,
+    104,
+    103,
+    102
+  ],
+  "timing_note": "esc_report timestamp is the FC time of successfully decoded capture processing. It is not an ESC-clock rotor measurement time. Requalify pose/command timing and firmware identity before flight-launcher use; never merely relabel old timing qualification.",
+  "rollback": "Use original main5_set3_gcc9 ba91960 image and fresh before-flash parameter backup. Revert BDShot/serial configuration to its captured previous settings.",
+  "native_test_commands": [
+    "python3 Tools/morpheus/test_bdshot_offline.py",
+    "python3 Tools/morpheus/test_bdshot_flight_callbacks.py",
+    "python3 Tools/morpheus/test_dshot_flight_driver.py"
+  ],
+  "configuration_contract": {
+    "DSHOT_TEL_CFG": 0,
+    "DSHOT_BIDIR_EN": 1,
+    "MOT_POLE_COUNT": 12,
+    "motor_timer": "TIM1 / timer index0 DShot300",
+    "servo_timers": "TIM2/TIM3 retain configured 200Hz",
+    "physical_output_functions": [
+      101,
+      104,
+      103,
+      102
+    ],
+    "gain_allocation_arm_or_direction_changes": false
+  },
+  "production_changes": [
+    "Retain tested early input release for initialized motor GPIOs at TX completion.",
+    "Keep GPIO initialization, selected capture register, DMA mapping and processed channel aligned.",
+    "Normal throttle/special-command encoder restored; normal PX4 disarmed STOP handling retained.",
+    "Bound round-robin selection and reject invalid channel indices/missing mappings.",
+    "Publish FC decode-processing timestamps for valid RPM replies; preserve old timestamp on invalid replies.",
+    "Armed telemetry flags follow actual arming, not enabled output peripherals."
+  ],
+  "removed_diagnostics": [
+    "Forced motor-stop encoder",
+    "GPIO CPU probes/interrupt blocking",
+    "Capture register/raw-edge snapshots",
+    "Fixed channel and alternate release modes",
+    "Packet cadence gate",
+    "Read-only ESC bootloader/configuration utility and its TIM13 requirement",
+    "MORPH_ESC_DIAG output-startup interlock; rcS matches flight baseline"
+  ],
+  "preserved_flight_baseline": [
+    "Controller, EKF2 and allocator source unchanged.",
+    "Airframe and output map unchanged.",
+    "Arm publisher and loaded-neutral calibration unchanged.",
+    "Normal dshot/pwm_out startup restored.",
+    "SD benchmark/stress tools restored; unused rover position controller disabled for flash space."
+  ],
+  "remaining_validation": [
+    "Disarmed boot and stationary telemetry using this exact flight binary.",
+    "Correct nonzero RPM, motor mapping/pole conversion and longest inter-reply gaps during rotating operation.",
+    "Achieved esc_status ULog sample rate and command/mocap/RPM time alignment.",
+    "No-load/load/flight behavior and timing qualification remain untested under the user instruction never to arm or send thrust."
+  ],
+  "commissioning": "This is a flight-capable candidate, not a claim of flight qualification. Normal actuator commands are enabled by the software; do not use old bench-only assumptions."
+}
