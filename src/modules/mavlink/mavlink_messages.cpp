@@ -74,6 +74,7 @@
 #include "streams/ESC_INFO.hpp"
 #include "streams/ESC_STATUS.hpp"
 #include "streams/ESTIMATOR_STATUS.hpp"
+#include "streams/MORPHEUS_ESTIMATOR_HEALTH.hpp"
 #include "streams/EXTENDED_SYS_STATE.hpp"
 #include "streams/FLIGHT_INFORMATION.hpp"
 #include "streams/GLOBAL_POSITION_INT.hpp"
@@ -332,6 +333,7 @@ static const StreamListItem streams_list[] = {
 #endif // ODOMETRY_HPP
 #if defined(ESTIMATOR_STATUS_HPP)
 	create_stream_list_item<MavlinkStreamEstimatorStatus>(),
+	create_stream_list_item<MavlinkStreamMorpheusEstimatorHealth>(),
 #endif // ESTIMATOR_STATUS_HPP
 #if defined(VIBRATION_HPP)
 	create_stream_list_item<MavlinkStreamVibration>(),

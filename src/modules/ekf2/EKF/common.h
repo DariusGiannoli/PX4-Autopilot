@@ -121,6 +121,22 @@ enum class HeightSensor : uint8_t {
 	UNKNOWN  = 4
 };
 
+#if defined(CONFIG_EKF2_EXTERNAL_VISION)
+// Diagnostic snapshot taken before updating the previous EV sample. It is
+// never used to decide fusion; publish it with the same-update EKF health.
+struct externalVisionStartupStatus {
+	int32_t ev_ctrl{0};
+	int32_t ev_qmin{0};
+	int32_t hgt_ref{0};
+	uint64_t checked_at_us{0};
+	uint64_t sample_us{0};
+	uint64_t previous_sample_us{0};
+	uint64_t newest_sample_us{0};
+	uint64_t buffer_push_us{0};
+	uint8_t failed_checks{0};
+};
+#endif
+
 enum class PositionSensor : uint8_t {
 	UNKNOWN = 0,
 	GNSS    = 1,
@@ -417,7 +433,7 @@ struct parameters {
 
 	float ev_vel_noise{0.1f};               ///< minimum allowed observation noise for EV velocity fusion (m/sec)
 	float ev_pos_noise{0.1f};               ///< minimum allowed observation noise for EV position fusion (m)
-	float ev_att_noise{0.1f};               ///< minimum allowed observation noise for EV attitude fusion (rad/sec)
+	float ev_att_noise{0.1f};               ///< minimum allowed observation standard deviation for EV attitude fusion (rad)
 	int32_t ev_quality_minimum{0};          ///< vision minimum acceptable quality integer
 	float ev_vel_innov_gate{3.0f};          ///< vision velocity fusion innovation consistency gate size (STD)
 	float ev_pos_innov_gate{5.0f};          ///< vision position fusion innovation consistency gate size (STD)

@@ -73,6 +73,7 @@
 #include <uORB/topics/estimator_states.h>
 #include <uORB/topics/estimator_status.h>
 #include <uORB/topics/estimator_status_flags.h>
+#include <uORB/topics/morpheus_estimator_health.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/sensor_selection.h>
@@ -156,6 +157,7 @@ public:
 	int instance() const { return _instance; }
 
 private:
+	friend class EKF2ParameterUpdateTestPeer;
 
 	static constexpr uint8_t MAX_NUM_IMUS = 4;
 	static constexpr uint8_t MAX_NUM_MAGS = 4;
@@ -427,6 +429,8 @@ private:
 	uORB::PublicationMulti<estimator_states_s>           _estimator_states_pub{ORB_ID(estimator_states)};
 	uORB::PublicationMulti<estimator_status_flags_s>     _estimator_status_flags_pub{ORB_ID(estimator_status_flags)};
 	uORB::PublicationMulti<estimator_status_s>           _estimator_status_pub{ORB_ID(estimator_status)};
+	uORB::PublicationMulti<morpheus_estimator_health_s> _morpheus_health_pub{ORB_ID(morpheus_estimator_health)};
+	uint8_t _morpheus_ev_pose_frame{0};
 
 	uORB::PublicationMulti<estimator_aid_source1d_s> _estimator_aid_src_fake_hgt_pub{ORB_ID(estimator_aid_src_fake_hgt)};
 	uORB::PublicationMulti<estimator_aid_source2d_s> _estimator_aid_src_fake_pos_pub{ORB_ID(estimator_aid_src_fake_pos)};

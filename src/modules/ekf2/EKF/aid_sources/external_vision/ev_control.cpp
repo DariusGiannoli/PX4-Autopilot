@@ -59,6 +59,22 @@ void Ekf::controlExternalVisionFusion()
 				&& ((_params.ev_quality_minimum <= 0) || (_ext_vision_buffer->get_newest().quality >= _params.ev_quality_minimum)) // newest quality sufficient
 				&& isNewestSampleRecent(_time_last_ext_vision_buffer_push, EV_MAX_INTERVAL);
 
+		// Record the original checks without changing their control-flow use.
+		// The checked-at timestamp distinguishes a passing mask from no samples.
+		_ev_startup_status.ev_ctrl = _params.ev_ctrl;
+		_ev_startup_status.ev_qmin = _params.ev_quality_minimum;
+		_ev_startup_status.hgt_ref = _params.height_sensor_ref;
+		_ev_startup_status.checked_at_us = _time_latest_us;
+		_ev_startup_status.sample_us = ev_sample.time_us;
+		_ev_startup_status.previous_sample_us = _ev_sample_prev.time_us;
+		_ev_startup_status.newest_sample_us = _ext_vision_buffer->get_newest().time_us;
+		_ev_startup_status.buffer_push_us = _time_last_ext_vision_buffer_push;
+		_ev_startup_status.failed_checks = uint8_t(!quality_sufficient)
+			| (uint8_t(!((ev_sample.time_us - _ev_sample_prev.time_us) < EV_MAX_INTERVAL)) << 1)
+			| (uint8_t(!((_params.ev_quality_minimum <= 0) || (_ev_sample_prev.quality >= _params.ev_quality_minimum))) << 2)
+			| (uint8_t(!((_params.ev_quality_minimum <= 0) || (_ext_vision_buffer->get_newest().quality >= _params.ev_quality_minimum))) << 3)
+			| (uint8_t(!isNewestSampleRecent(_time_last_ext_vision_buffer_push, EV_MAX_INTERVAL)) << 4);
+
 		updateEvAttitudeErrorFilter(ev_sample, ev_reset);
 		controlEvYawFusion(ev_sample, starting_conditions_passing, ev_reset, quality_sufficient, _aid_src_ev_yaw);
 		controlEvVelFusion(ev_sample, starting_conditions_passing, ev_reset, quality_sufficient, _aid_src_ev_vel);

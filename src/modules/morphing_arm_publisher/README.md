@@ -2,10 +2,74 @@
 
 `morphing_arm_publisher` connects `vehicle_command` to `morphing_arm_state`.
 It observes `VEHICLE_CMD_DO_SET_ACTUATOR` with `param7=0`. Parameters 1–4 are
-explicitly assigned to **FR, RR, RL, FL**. It does not drive PWM itself or send
+assigned according to `MARM_MODEL`: legacy **FR, RR, RL, FL** or measured **FR, RL, FL, RR**. It does not drive PWM itself or send
 command acknowledgements: existing PX4 `FunctionActuatorSet` drives outputs
 assigned to Peripheral via Actuator Set 1–4. RC AUX is a different path and is
 not covered.
+
+## Shared measured FR model (2026-10-12)
+
+Select `MARM_MODEL=1` only with the matching host calibration ID `1210832`.
+The JSON source in Morpheus is `dynamics/arm_mapping/model.json`;
+`control/tools/export_arm_calibration.py --check` verifies the generated C++ table.
+The host setup is `control/config/arm_validation/neutral_1210832.params`. It is a manual
+configuration file, not executed automatically by the flight script.
+
+| Actuator set | Arm | MAIN | Min / neutral / max (us) |
+| --- | --- | --- | --- |
+| 1 | FR | 7 | 1150 / 1400 / 1750 |
+| 2 | RL | 6 | 1150 / 1550 / 1750 |
+| 3 | FL | 8 | 1150 / 1500 / 1750 |
+| 4 | RR | 5 | 1150 / 1500 / 1750 |
+
+MAIN 5–6 and MAIN 7–8 PWM timer groups must match at either 50 Hz or 200 Hz.
+The original dynamic calibration was collected at 50 Hz; accepting the 200 Hz
+configuration does not establish its transient accuracy at that refresh rate.
+
+The prior 1300/1700 disarmed values were temporary clearance positions in the
+FR experiment. They are not used as operational neutral calibration.
+
+The user-specified zero-angle trims are FR/RR/RL/FL = -50/+50/+100/+50 us
+relative to the retained 1450-us bench reference. The host adds these trims;
+the firmware removes them before evaluating the unchanged bench curves. This
+shifted shared model requires physical validation and a matching firmware flash.
+
+The host inverts the fitted generalized-play/hysteresis map separately for each
+arm. Commands remain normalized raw PWM, not angle fractions; never divide them
+by two. The publisher reconstructs four independent hysteresis states and
+integrates the fitted speed-limited second-order response with steps <=2 ms.
+It publishes estimated current angles at 100 Hz in canonical FR/RR/RL/FL order.
+MARM_*_NEG/ZERO/POS/CTR are ignored in measured mode. MARM_*_DIR selects the
+increasing-PWM to CAD angle sign (+1 by default); the host checks matching signs.
+Verify signs on each installed linkage before changing geometry in flight.
+
+The first accepted packet must contain the configured per-arm neutral PWM values and the
+physical arms must already be at neutral. Subsequent packets must contain all
+four finite targets. Repeated identical PWM commands do not reapply hysteresis.
+On timeout, queue overflow, invalid command or >100 ms scheduler gap, the model
+stops refreshing allocation geometry and requires publisher restart from neutral.
+The independent PWM driver may continue holding/applying commands. This is not a
+flight abort mechanism or servo-position feedback. Lost radio packets before
+vehicle_command publication cannot be detected here; they can desynchronize the
+host inverse and onboard history. Verify the complete command path in bench logs.
+
+The host limits commands to +/-20 degrees with the current neutral trims. The allocator and publisher support
+a +/-35 degree prediction envelope to represent transient overshoot at endpoints.
+This does not increase the host command or PWM bounds. An out-of-range predicted angle latches a model fault
+rather than clipping the geometry. PWM bounds alone do not establish clearance
+for simultaneous arm movements. Returning to zero angle may request PWM slightly
+different from each starting neutral because the fitted hysteresis model compensates movement
+history; DIS retains the configured per-arm neutral.
+
+The measured 38 ms is **host-command to mocap-receipt delay**, not an isolated
+servo delay. It is deliberately excluded from the onboard dynamics. PWM phase,
+servo-only delay, voltage/load transfer and the shared-model assumption across
+unmeasured arms remain hardware qualification items. The dynamics are empirical
+position predictions, not a torque-based physical servo model.
+
+## Legacy model (`MARM_MODEL=0`)
+
+The following sections describe the original three-point mode.
 
 ## Configuration before activation
 

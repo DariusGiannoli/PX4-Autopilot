@@ -42,6 +42,7 @@
 #include "mavlink_main.h"
 
 #include <stdlib.h>
+#include <lib/timesync/MorpheusVisionTiming.hpp>
 
 MavlinkTimesync::MavlinkTimesync(Mavlink &mavlink) :
 	_mavlink(mavlink)
@@ -72,7 +73,8 @@ MavlinkTimesync::handle_message(const mavlink_message_t *msg)
 
 			} else if (tsync.tc1 > 0) {		// Message originating from this system, compute time offset from it
 
-				_timesync.update(now, tsync.tc1, tsync.ts1);
+				_timesync.update(now, tsync.tc1, tsync.ts1,
+						 MorpheusVisionTiming::clock_peer(msg->sysid, msg->compid));
 			}
 
 			break;
