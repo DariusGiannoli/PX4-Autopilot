@@ -14,6 +14,8 @@ Python 3 with `numpy`; `pymavlink` for the tools; `matplotlib` only for the traj
 | `trajectories/squareTraj.py` | Square laps, corners at alternating heights, constant yaw, stop at each corner; parameters at the top of the file (side, heights, laps, speed, acceleration, hold) |
 | `b1_watch.py` | Live B1 estimate over MAVLink; optional comparison with a reference B1 |
 | `hover_pulses.py` | Sets parameters, starts `throw_sysid`, fires the pulses on Enter (or `--after-airborne S`), prints the fit; never arms, takes off or lands |
+| `sitl/sitl_controller.py` | SITL only: external controller stand-in; trajectory file → cascaded PID → body rates + thrust over MAVLink (OFFBOARD); Enter = `trajectory_begin` |
+| `sitl/gz_params.sh` | SITL only: parameters for the Gazebo x500 (mocap-only EKF2, thrust curve, motor lag, prior ~15 % off, logging) |
 
 Both trajectories: same interface as `EightTraj` (`trajectory_begin(t)`, `initial_yaw()`, `calculate_trajectory(t)` →
 x, y, z, vx, vy, vz, ax, ay, az, yaw), z up, hold point before the start and after the end.
@@ -101,7 +103,29 @@ Suffix `*` = row: 0 a_z [m/s²], 1 α_x, 2 α_y, 3 α_z [rad/s²]. Values in a r
 5. Start the trajectory (`squareTraj`), watch the estimate.
 6. Land, copy the `.ulg` log.
 
-## 5. Expected values
+## 5. SITL test (Gazebo)
+
+Pulses on top of an external controller (body rates + thrust), all over MAVLink. Gazebo x500 with external vision =
+mocap stand-in. Needs Gazebo Garden (PX4 v1.14) and `make px4_sitl` built once.
+
+First time only: start PX4 (terminal 1 below), run `Tools/kf_b1/sitl/gz_params.sh` in a second terminal, then
+`shutdown` in terminal 1 and start PX4 again.
+
+| Terminal | Command (from the PX4 root) |
+|---|---|
+| 1. PX4 + Gazebo | `cd build/px4_sitl_default && PX4_SYS_AUTOSTART=4005 PX4_SIM_MODEL=gz_x500_vision ./bin/px4 -i 1` |
+| 2. Live B1 | `python3 Tools/kf_b1/b1_watch.py --url udpin:0.0.0.0:14031 --ref x500lin` |
+| 3. Pulses | `python3 Tools/kf_b1/hover_pulses.py --url udpin:0.0.0.0:14550` |
+| 4. Controller | `cd Tools/kf_b1/sitl && python3 sitl_controller.py --traj ../trajectories/hoverTraj.py --arm` (or `squareTraj.py`) |
+
+1. Terminal 4: arms, takes off to the trajectory's start point and holds.
+2. Enter in terminal 3: pulses (2 s), fit, `phase DONE`; terminal 2 switches to "started from throw".
+3. Enter in terminal 4: `trajectory_begin`; after the trajectory, 2 s hold, then AUTO.LAND.
+
+x500 reference (`x500lin`, `THR_MDL_FAC` 0.67): own gains 4.15 / 68.7 / 68.7 / 3.42. Gazebo result (square, 0.5 s pulses):
+fit 0 / −9 / −10 / −11 %, estimate at the end of the square +2 / −9 / −10 / −10 %.
+
+## 6. Expected values
 
 From the drone model (T_i/m = 12.68·u_i + 0.183, u_i = command × V/16.8), own gains at 16.8 V: thrust 12.68, roll 401,
 pitch 377, yaw 51; they scale with V/16.8 (at 15.2 V: 11.5 / 363 / 341 / 46). `b1_watch.py --ref testdrone --ref-volt V`
