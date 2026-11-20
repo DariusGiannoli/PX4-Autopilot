@@ -1,0 +1,5 @@
+menuconfig MODULES_KF_B1
+	bool "kf_b1"
+	default n
+	---help---
+		Enable support for kf_b1 (online Kalman-filter estimate of the control-effectiveness matrix B1)

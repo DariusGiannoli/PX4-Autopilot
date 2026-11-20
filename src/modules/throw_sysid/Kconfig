@@ -1,0 +1,5 @@
+menuconfig MODULES_THROW_SYSID
+	bool "throw_sysid"
+	default n
+	---help---
+		Enable support for throw_sysid (per-motor hover pulses added to the motor commands, for kf_b1)

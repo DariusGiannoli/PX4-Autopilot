@@ -53,6 +53,8 @@ set(msg_files
 	ArmingCheckReply.msg
 	ArmingCheckRequest.msg
 	AutotuneAttitudeControlStatus.msg
+	B1Estimate.msg
+	ThrowSysidStatus.msg
 	BatteryStatus.msg
 	Buffer128.msg
 	ButtonEvent.msg

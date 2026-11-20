@@ -696,12 +696,25 @@ ControlAllocator::publish_actuator_controls()
 
 	uint32_t stopped_motors = _actuator_effectiveness->getStoppedMotors() | _handled_motor_failure_bitmask;
 
+	// throw_sysid hover pulses: offsets added to the first 4 motors while pulsing, ignored once older than 20 ms
+	throw_sysid_status_s pulse;
+	const bool pulse_on = _throw_sysid_status_sub.copy(&pulse) && (pulse.phase == throw_sysid_status_s::PHASE_EXCITE)
+			      && (hrt_elapsed_time(&pulse.timestamp) < 20_ms);
+
 	// motors
 	int motors_idx;
 
 	for (motors_idx = 0; motors_idx < _num_actuators[0] && motors_idx < actuator_motors_s::NUM_CONTROLS; motors_idx++) {
 		int selected_matrix = _control_allocation_selection_indexes[actuator_idx];
 		float actuator_sp = _control_allocation[selected_matrix]->getActuatorSetpoint()(actuator_idx_matrix[selected_matrix]);
+
+		if (pulse_on && motors_idx < 4 && PX4_ISFINITE(actuator_sp) && PX4_ISFINITE(pulse.offset[motors_idx])) {
+			const int k = actuator_idx_matrix[selected_matrix];
+			actuator_sp = math::constrain(actuator_sp + pulse.offset[motors_idx],
+						      _control_allocation[selected_matrix]->getActuatorMin()(k),
+						      _control_allocation[selected_matrix]->getActuatorMax()(k));
+		}
+
 		actuator_motors.control[motors_idx] = PX4_ISFINITE(actuator_sp) ? actuator_sp : NAN;
 
 		if (stopped_motors & (1u << motors_idx)) {
