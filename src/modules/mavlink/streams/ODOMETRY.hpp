@@ -35,6 +35,10 @@
 #define ODOMETRY_HPP
 
 #include <uORB/topics/vehicle_odometry.h>
+#include <uORB/topics/morphing_arm_state.h>
+#include <uORB/topics/morphing_publisher_status.h>
+#include "../../morphing_arm_publisher/MeasuredArmCalibration.hpp"
+#include "MORPHEUS_ARM_PREDICTION.hpp"
 
 class MavlinkStreamOdometry : public MavlinkStream
 {
@@ -49,13 +53,39 @@ public:
 
 	unsigned get_size() override
 	{
-		return _vehicle_odometry_sub.advertised() ? MAVLINK_MSG_ID_ODOMETRY_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0;
+		return _vehicle_odometry_sub.advertised() ? MAVLINK_MSG_ID_ODOMETRY_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES
+		       + (_arm_state_sub.advertised() ? 60 + 5 + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0) : 0;
 	}
 
 private:
 	explicit MavlinkStreamOdometry(Mavlink *mavlink) : MavlinkStream(mavlink) {}
 
 	uORB::Subscription _vehicle_odometry_sub{ORB_ID(vehicle_odometry)};
+	uORB::Subscription _arm_state_sub{ORB_ID(morphing_arm_state)};
+	uORB::Subscription _arm_status_sub{ORB_ID(morphing_publisher_status)};
+
+	// MAP1 predicts arms at FC publication time and pairs them with this exact
+	// flight-state sample. Never differentiate angles or use host joint truth.
+	void send_arm_prediction(const vehicle_odometry_s &odom)
+	{
+		morphing_arm_state_s arm{};
+		morphing_publisher_status_s status{};
+		const uint64_t now = hrt_absolute_time();
+		if (!_arm_state_sub.copy(&arm) || !_arm_status_sub.copy(&status)
+		    || !status.enabled || !status.calibration_valid || status.stale
+		    || status.initialized_mask != 15 || arm.timestamp == 0 || now < arm.timestamp
+		    || now - arm.timestamp > 50000 || now < status.timestamp || now - status.timestamp > 200000
+		    || now < status.timestamp_command || now - status.timestamp_command > 500000) { return; }
+		mavlink_v2_extension_t msg{};
+		msg.message_type = 42002;
+		for (unsigned i = 0; i < 4; ++i) {
+			if (!PX4_ISFINITE(arm.angle[i]) || !PX4_ISFINITE(arm.angular_velocity[i])) { return; }
+		}
+		morpheus_arm_prediction::encode(msg.payload, odom.reset_counter,
+			morphing_publisher::measured::CALIBRATION_ID, odom.timestamp_sample,
+			arm.timestamp, arm.angle, arm.angular_velocity);
+		mavlink_msg_v2_extension_send_struct(_mavlink->get_channel(), &msg);
+	}
 
 	bool send() override
 	{
@@ -142,6 +172,7 @@ private:
 			msg.quality = odom.quality;
 
 			mavlink_msg_odometry_send_struct(_mavlink->get_channel(), &msg);
+			send_arm_prediction(odom);
 
 			return true;
 		}

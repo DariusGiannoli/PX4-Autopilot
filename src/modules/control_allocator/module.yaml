@@ -46,6 +46,19 @@ parameters:
                 2: Automatic
             default: 2
 
+        CA_MORPH_FRZ:
+            description:
+                short: Freeze morphing allocation at neutral
+                long: |
+                  Experimental A/B test for CA_AIRFRAME=13 only. Zero uses predicted
+                  arm angles. One holds the allocation geometry at zero arm angles.
+                  Servo commands, arm prediction and diagnostics remain active.
+                  Mode changes are accepted only while disarmed. Restore zero after testing.
+            type: int32
+            min: 0
+            max: 1
+            default: 0
+
         CA_MORPH_COGX:
             description:
                 short: Morphing quad center of gravity X

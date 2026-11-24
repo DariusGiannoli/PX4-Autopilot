@@ -42,9 +42,11 @@ bool ActuatorEffectivenessMorphingQuad::computeMatrix(const morphing_quad::Rotor
 bool ActuatorEffectivenessMorphingQuad::getEffectivenessMatrix(Configuration &configuration,
 		EffectivenessUpdateReason reason)
 {
-	morphing_quad::RotorValues next_angles = _angles;
+	_armed_sub.update(&_armed);
+	const bool mode_changed = _allocation_mode.update(_param_freeze.get() == 1, _armed.armed);
+	morphing_quad::RotorValues next_angles = _input_angles;
 	uint64_t next_timestamp = _last_timestamp;
-	bool changed = false;
+	bool changed = mode_changed;
 	morphing_arm_state_s state;
 
 	const bool received = _arm_state_sub.update(&state);
@@ -65,18 +67,21 @@ bool ActuatorEffectivenessMorphingQuad::getEffectivenessMatrix(Configuration &co
 
 		if (computeMatrix(next_angles, candidate)) {
 			_diagnostics.input_result = morphing_geometry_s::INPUT_ACCEPTED;
-			changed = next_angles != _angles;
+			_input_angles = next_angles;
 			next_timestamp = state.timestamp;
 
 		} else {
 			_diagnostics.input_result = morphing_geometry_s::INPUT_INVALID;
-			next_angles = _angles;
+			next_angles = _input_angles;
 		}
 	}
 
 	if (received && _diagnostics.input_result != morphing_geometry_s::INPUT_ACCEPTED) {
 		++_diagnostics.rejected_inputs;
 	}
+
+	next_angles = _allocation_mode.select(_input_angles);
+	changed = changed || next_angles != _angles;
 
 	if (!changed && reason == EffectivenessUpdateReason::NO_EXTERNAL_UPDATE) {
 		_last_timestamp = next_timestamp;
