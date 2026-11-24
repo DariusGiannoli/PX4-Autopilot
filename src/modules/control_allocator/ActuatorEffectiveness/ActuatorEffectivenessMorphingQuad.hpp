@@ -3,6 +3,8 @@
 
 #include "ActuatorEffectivenessMultirotor.hpp"
 #include "MorphingQuadGeometry.hpp"
+#include "MorphingAllocationMode.hpp"
+#include <uORB/topics/actuator_armed.h>
 #include <uORB/Subscription.hpp>
 #include <uORB/Publication.hpp>
 #include <uORB/topics/morphing_geometry.h>
@@ -31,10 +33,15 @@ private:
 	uORB::Publication<morphing_geometry_s> _geometry_pub{ORB_ID(morphing_geometry)};
 	uORB::Publication<morphing_allocation_matrix_s> _matrix_pub{ORB_ID(morphing_allocation_matrix)};
 	uORB::Subscription _arm_state_sub{ORB_ID(morphing_arm_state)};
+	MorphingAllocationMode _allocation_mode;
+	uORB::Subscription _armed_sub{ORB_ID(actuator_armed)};
+	actuator_armed_s _armed{};
+	morphing_quad::RotorValues _input_angles{};
 	morphing_quad::RotorValues _angles{}; // neutral until the first valid accepted state
 	uint64_t _last_timestamp{0};
 
 	DEFINE_PARAMETERS(
+		(ParamInt<px4::params::CA_MORPH_FRZ>) _param_freeze,
 		(ParamFloat<px4::params::CA_MORPH_COGX>) _param_cog_x,
 		(ParamFloat<px4::params::CA_MORPH_COGY>) _param_cog_y,
 		(ParamFloat<px4::params::CA_MORPH_COGZ>) _param_cog_z

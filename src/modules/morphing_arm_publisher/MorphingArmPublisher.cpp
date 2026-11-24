@@ -64,20 +64,20 @@ int MorphingArmPublisher::readInteger(const char *name, int32_t *value)
 	return param_get(param_find(name), value);
 }
 
-bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32_t *))
+__attribute__((optimize("Os"))) bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32_t *))
 {
 	int32_t id = 0, reverse = 0;
 	if (read_int("MARM_CAL_ID", &id) != PX4_OK || id != morphing_publisher::measured::CALIBRATION_ID
 	    || read_int("PWM_MAIN_REV", &reverse) != PX4_OK || reverse != 0) { return false; }
 	int32_t rate1 = 0, rate2 = 0;
 	if (read_int("PWM_MAIN_TIM1", &rate1) != PX4_OK || read_int("PWM_MAIN_TIM2", &rate2) != PX4_OK
-	    || rate1 != rate2 || (rate1 != 50 && rate1 != 200)) { return false; }
+	    || rate1 != 200 || rate2 != 200) { return false; }
 	const auto &pins = morphing_publisher::measured::OUTPUT_PINS; // canonical FR RR RL FL
 	const auto &functions = morphing_publisher::measured::OUTPUT_FUNCTIONS;
 	const char *arms[] = {"FR", "RR", "RL", "FL"};
 	const char *fields[] = {"FUNC", "MIN", "MAX", "DIS"};
 	for (unsigned i = 0; i < 4; ++i) {
-		const int32_t expected[] = {functions[i], 1150, 1750, morphing_publisher::measured::NEUTRAL_PWM[i]};
+		const int32_t expected[] = {functions[i], morphing_publisher::measured::PWM_MIN[i], morphing_publisher::measured::PWM_MAX[i], morphing_publisher::measured::NEUTRAL_PWM[i]};
 		for (unsigned j = 0; j < 4; ++j) {
 			char name[17]; snprintf(name, sizeof(name), "PWM_MAIN_%s%u", fields[j], pins[i]);
 			int32_t value = 0;
@@ -89,7 +89,7 @@ bool MorphingArmPublisher::configureMeasured(int (*read_int)(const char *, int32
 		char name[17]; snprintf(name, sizeof(name), "MARM_%s_DIR", arms[i]);
 		if (read_int(name, &_directions[i]) != PX4_OK
 		    || (_directions[i] != -1 && _directions[i] != 1)) { return false; }
-		_models[i].reset(static_cast<float>(morphing_publisher::measured::NEUTRAL_PWM[i]));
+		_models[i].reset(static_cast<float>(morphing_publisher::measured::NEUTRAL_PWM[i]), i);
 	}
 	return true;
 }
@@ -107,7 +107,7 @@ void MorphingArmPublisher::advanceMeasured(uint64_t now)
 	_model_time = now;
 }
 
-void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uint64_t now)
+__attribute__((optimize("Os"))) void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uint64_t now)
 {
 	// Generated actuator-set routing -> canonical allocator FR RR RL FL.
 	const float channels[] = {command.param1, command.param2, command.param3, command.param4};
@@ -117,13 +117,10 @@ void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uin
 	for (unsigned i = 0; i < 4; ++i) {
 		const float value = values[i];
 		if (!PX4_ISFINITE(value) || fabsf(value) > 1.f) { valid = false; continue; }
-		// Wire encoding stays 1450 + 300*u. Table coordinates use the
-		// calibration's reference neutral, exactly as MeasuredArmModel::reset.
-		const float virtual_pwm = lroundf(1450.f + 300.f * value)
-			- (morphing_publisher::measured::NEUTRAL_PWM[i] - morphing_publisher::measured::REFERENCE_NEUTRAL_PWM);
-		valid = valid && virtual_pwm >= morphing_publisher::measured::PWM[0]
-			&& virtual_pwm <= morphing_publisher::measured::PWM[morphing_publisher::measured::COUNT-1];
-		if (!_model_started) { valid = valid && lroundf(1450.f + 300.f * value) == morphing_publisher::measured::NEUTRAL_PWM[i]; }
+		float virtual_pwm = 0.f;
+		valid = valid && morphing_publisher::MeasuredArmModel::decode(value, i, virtual_pwm)
+			&& morphing_publisher::MeasuredArmModel::safeWire(value, i, _directions[i]);
+		if (!_model_started) { valid = valid && static_cast<int>(virtual_pwm) == static_cast<int>(morphing_publisher::measured::REFERENCE_NEUTRAL_PWM); }
 	}
 	if (!valid) {
 		++_status.rejected_commands; _state.invalidate(); _status.stale = true;
@@ -142,16 +139,17 @@ void MorphingArmPublisher::processMeasured(const vehicle_command_s &command, uin
 	_state.initialized_mask = 15;
 	_status.timestamp_command = command.timestamp;
 	_status.stale = false;
-	advanceMeasured(now);
+	// Drain all timestamped commands before advancing to wall time in Run().
 }
 
-void MorphingArmPublisher::publishMeasured(uint64_t now)
+__attribute__((optimize("Os"))) void MorphingArmPublisher::publishMeasured(uint64_t now)
 {
 	if (!_model_started || _model_fault || _status.stale || _state.initialized_mask != 15) { return; }
 	morphing_arm_state_s state{};
 	state.timestamp = now;
 	for (unsigned i = 0; i < 4; ++i) {
-		state.angle[i] = _models[i].angle * _directions[i] * 0.017453292519943295f;
+		state.angle[i] = _models[i].angle * morphing_publisher::measured::PWM_SIGN[i] * _directions[i] * 0.017453292519943295f;
+		state.angular_velocity[i] = _models[i].velocity * morphing_publisher::measured::PWM_SIGN[i] * _directions[i] * 0.017453292519943295f;
 		// Preserve actual predicted overshoot; use the allocator's shared envelope.
 		if (!PX4_ISFINITE(state.angle[i]) || fabsf(state.angle[i]) > morphing_quad::MAX_ANGLE_RAD) {
 			_model_fault = true; _state.invalidate(); _status.stale = true;
@@ -190,6 +188,10 @@ void MorphingArmPublisher::process(const vehicle_command_s &command, uint64_t no
 {
 	if (command.command != vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR || !PX4_ISFINITE(command.param7)
 	    || command.param7 < 0.f || command.param7 > 0.f) { return; }
+
+	// A fresh subscription can contain commands queued before this restart.
+	// Discard them before model initialization; fresh neutral is still mandatory.
+	if (_measured && !_model_started && command.timestamp <= _start_time) { return; }
 
 	if (command.timestamp <= _last_seen || command.timestamp > now || now - command.timestamp > _timeout_us) {
 		++_status.rejected_commands;
@@ -283,8 +285,8 @@ void MorphingArmPublisher::Run()
 
 int MorphingArmPublisher::print_status()
 {
-	PX4_INFO("MAVLink group 0: %s; no position feedback", _measured ? "RL FR RR FL (measured model)" : "FR RR RL FL (legacy)");
-	if (_measured) { PX4_INFO("calibration=%d model_fault=%d; host/mocap delay excluded", morphing_publisher::measured::CALIBRATION_ID, _model_fault); }
+	PX4_INFO("MAVLink group 0: %s; no position feedback", _measured ? "FR RL FL RR (measured model)" : "FR RR RL FL (legacy)");
+	if (_measured) { PX4_INFO("calibration=%d model_fault=%d; FC response delay included; host transport excluded", morphing_publisher::measured::CALIBRATION_ID, _model_fault); }
 	PX4_INFO("enabled=%d calibration=%d initialized=0x%x stale=%d published=%lu rejected=%lu",
 		 enabled(), _status.calibration_valid, _state.initialized_mask, _status.stale,
 		 (unsigned long)_status.published_messages, (unsigned long)_status.rejected_commands);

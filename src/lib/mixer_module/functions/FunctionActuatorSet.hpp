@@ -34,6 +34,8 @@
 #pragma once
 
 #include "FunctionProviderBase.hpp"
+#include <parameters/param.h>
+#include "../../../modules/morphing_arm_publisher/MeasuredArmModel.hpp"
 
 #include <uORB/topics/vehicle_command.h>
 
@@ -52,12 +54,28 @@ public:
 
 	static FunctionProviderBase *allocate(const Context &context) { return new FunctionActuatorSet(); }
 
-	void update() override
+	__attribute__((optimize("Os"))) void update() override
 	{
 		vehicle_command_s vehicle_command;
 
 		while (_topic.update(&vehicle_command)) {
 			if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
+				// Raw calibration remains possible with MORPH_PUB_EN=0. During
+				// measured operation, reject the whole four-arm update before
+				// changing any PWM, independently of the angle publisher.
+				int32_t enabled = 0, model = 0, id = 0;
+				param_get(param_find("MORPH_PUB_EN"), &enabled);
+				param_get(param_find("MARM_MODEL"), &model);
+				param_get(param_find("MARM_CAL_ID"), &id);
+				if (enabled == 1 && model == 1) {
+					const float channels[] = {vehicle_command.param1, vehicle_command.param2, vehicle_command.param3, vehicle_command.param4};
+					bool safe = id == morphing_publisher::measured::CALIBRATION_ID && PX4_ISFINITE(vehicle_command.param7) && vehicle_command.param7 >= 0.f && vehicle_command.param7 <= 0.f;
+					for (unsigned arm = 0; arm < 4; ++arm) {
+						safe = safe && morphing_publisher::MeasuredArmModel::safeWire(channels[morphing_publisher::measured::COMMAND_INDEX[arm]], arm);
+					}
+					if (!safe) { continue; }
+				}
+
 				int index = (int)(vehicle_command.param7 + 0.5f);
 
 				if (index == 0) {

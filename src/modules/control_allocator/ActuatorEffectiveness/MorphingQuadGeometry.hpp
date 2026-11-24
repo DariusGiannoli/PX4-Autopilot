@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #pragma once
+#include "../../morphing_arm_publisher/MeasuredArmCalibration.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -45,7 +46,7 @@ using EffectivenessMatrix = FixedArray<FixedArray<float, 4>, 6>;
 
 // Geometry prediction envelope, not a servo command/clearance limit.
 // Host commands remain +/-30 deg; allow the measured dynamics' transient overshoot.
-constexpr float MAX_ANGLE_RAD = 0.6108652381980153f; // 35 degrees
+constexpr float MAX_ANGLE_RAD = morphing_publisher::measured::MAX_ABS_ANGLE_RAD; // Measured identification envelope
 constexpr FixedArray<std::size_t, 4> MOTOR_TO_ARM{{0, 2, 3, 1}};
 
 struct GeometryResult {
