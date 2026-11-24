@@ -53,8 +53,6 @@ set(msg_files
 	ArmingCheckReply.msg
 	ArmingCheckRequest.msg
 	AutotuneAttitudeControlStatus.msg
-	B1Estimate.msg
-	ThrowSysidStatus.msg
 	BatteryStatus.msg
 	Buffer128.msg
 	ButtonEvent.msg
@@ -260,6 +258,15 @@ set(msg_files
 	Wind.msg
 	YawEstimatorStatus.msg
 )
+
+if(CONFIG_MODULES_KF_B1)
+	list(APPEND msg_files B1Estimate.msg)
+endif()
+
+if(CONFIG_MODULES_KF_B1 OR CONFIG_MODULES_THROW_SYSID)
+	list(APPEND msg_files ThrowSysidStatus.msg)
+endif()
+
 list(SORT msg_files)
 
 px4_list_make_absolute(msg_files ${CMAKE_CURRENT_SOURCE_DIR} ${msg_files})

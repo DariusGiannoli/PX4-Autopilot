@@ -268,10 +268,14 @@ void LoggedTopics::add_high_rate_topics()
 	add_topic_multi("vehicle_thrust_setpoint", 0, 2);
 	add_topic_multi("vehicle_torque_setpoint", 0, 2);
 
-	// kf_b1 and throw_sysid outputs and the a_z measurement at full rate
+#ifdef CONFIG_MODULES_KF_B1
 	add_topic("b1_estimate");
-	add_topic("throw_sysid_status");
 	add_topic("vehicle_acceleration");
+#endif
+
+#ifdef CONFIG_MODULES_THROW_SYSID
+	add_topic("throw_sysid_status");
+#endif
 }
 
 void LoggedTopics::add_debug_topics()

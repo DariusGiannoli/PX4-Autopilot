@@ -79,7 +79,10 @@
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/failure_detector_status.h>
+
+#ifdef CONFIG_MODULES_THROW_SYSID
 #include <uORB/topics/throw_sysid_status.h>
+#endif
 
 class ControlAllocator : public ModuleBase<ControlAllocator>, public ModuleParams, public px4::ScheduledWorkItem
 {
@@ -209,7 +212,9 @@ private:
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _failure_detector_status_sub{ORB_ID(failure_detector_status)};
+#ifdef CONFIG_MODULES_THROW_SYSID
 	uORB::Subscription _throw_sysid_status_sub{ORB_ID(throw_sysid_status)};  /**< throw_sysid hover pulses (additive offsets) */
+#endif
 
 	matrix::Vector3f _torque_sp;
 	matrix::Vector3f _thrust_sp;
