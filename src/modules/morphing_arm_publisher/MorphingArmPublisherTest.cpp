@@ -313,6 +313,10 @@ TEST_F(MorphingArmPublisherTest, MeasuredStaleHistoryRequiresRestart)
 
 TEST_F(MorphingArmPublisherTest, MeasuredConfigurationAndInitialNeutralGate)
 {
+    // Fresh parameter storage must select the same contract as the generated table.
+    int32_t default_calibration = 0;
+    ASSERT_EQ(param_get_system_default_value(param_find("MARM_CAL_ID"), &default_calibration), PX4_OK);
+    EXPECT_EQ(default_calibration, morphing_publisher::measured::CALIBRATION_ID);
     measuredConfig();
     MorphingArmPublisher module;
     measured_parameters["PWM_MAIN_DIS5"] = 1300;
