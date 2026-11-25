@@ -83,6 +83,7 @@
 #include <uORB/topics/landing_target_pose.h>
 #include <uORB/topics/log_message.h>
 #include <uORB/topics/manual_control_setpoint.h>
+#include <uORB/topics/morpheus_vision_ingress.h>
 #include <uORB/topics/mavlink_tunnel.h>
 #include <uORB/topics/obstacle_distance.h>
 #include <uORB/topics/offboard_control_mode.h>
@@ -180,6 +181,8 @@ private:
 	void handle_message_named_value_int(mavlink_message_t *msg);
 	void handle_message_obstacle_distance(mavlink_message_t *msg);
 	void handle_message_odometry(mavlink_message_t *msg);
+	void handle_message_compact_vision(mavlink_message_t *msg);
+	void handle_odometry_sample(const mavlink_message_t *msg, const mavlink_odometry_t &odom_in);
 	void handle_message_onboard_computer_status(mavlink_message_t *msg);
 	void handle_message_optical_flow_rad(mavlink_message_t *msg);
 	void handle_message_ping(mavlink_message_t *msg);
@@ -321,6 +324,7 @@ private:
 	uORB::Publication<trajectory_setpoint_s>		_trajectory_setpoint_pub{ORB_ID(trajectory_setpoint)};
 	uORB::Publication<vehicle_odometry_s>			_mocap_odometry_pub{ORB_ID(vehicle_mocap_odometry)};
 	uORB::Publication<vehicle_odometry_s>			_visual_odometry_pub{ORB_ID(vehicle_visual_odometry)};
+	uORB::PublicationMulti<morpheus_vision_ingress_s> _vision_ingress_pub{ORB_ID(morpheus_vision_ingress)};
 	uORB::Publication<vehicle_rates_setpoint_s>		_rates_sp_pub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Publication<vehicle_trajectory_bezier_s>		_trajectory_bezier_pub{ORB_ID(vehicle_trajectory_bezier)};
 	uORB::Publication<vehicle_trajectory_waypoint_s>	_trajectory_waypoint_pub{ORB_ID(vehicle_trajectory_waypoint)};

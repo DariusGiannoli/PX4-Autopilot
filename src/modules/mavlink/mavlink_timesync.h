@@ -59,9 +59,10 @@ public:
 	 * Use synchronised time if available, monotonic boot time otherwise
 	 */
 	uint64_t sync_stamp(uint64_t usec) { return _timesync.sync_stamp(usec); }
-	bool sync_vision_stamp(uint64_t usec, uint64_t &mapped_us)
+	bool sync_vision_stamp(uint64_t usec, uint64_t &mapped_us,
+			       BoundedVisionClock::ConversionTrace *trace = nullptr)
 	{
-		return _timesync.sync_vision_stamp(usec, hrt_absolute_time(), mapped_us);
+		return _timesync.sync_vision_stamp(usec, hrt_absolute_time(), mapped_us, trace);
 	}
 
 private:

@@ -38,22 +38,24 @@
 #include <uORB/topics/morphing_arm_state.h>
 #include <uORB/topics/morphing_publisher_status.h>
 #include "../../morphing_arm_publisher/MeasuredArmCalibration.hpp"
-#include "MORPHEUS_ARM_PREDICTION.hpp"
+#include "MORPHEUS_COMPACT_ODOMETRY.hpp"
 
+template<bool Compact>
 class MavlinkStreamOdometry : public MavlinkStream
 {
 public:
 	static MavlinkStream *new_instance(Mavlink *mavlink) { return new MavlinkStreamOdometry(mavlink); }
 
-	static constexpr const char *get_name_static() { return "ODOMETRY"; }
-	static constexpr uint16_t get_id_static() { return MAVLINK_MSG_ID_ODOMETRY; }
+	static constexpr const char *get_name_static() { return Compact ? "MORPHEUS_COMPACT_ODOMETRY" : "ODOMETRY"; }
+	static constexpr uint16_t get_id_static() { return Compact ? morpheus_compact_odometry::MessageType : MAVLINK_MSG_ID_ODOMETRY; }
 
 	const char *get_name() const override { return get_name_static(); }
 	uint16_t get_id() override { return get_id_static(); }
 
 	unsigned get_size() override
 	{
-		return _vehicle_odometry_sub.advertised() ? MAVLINK_MSG_ID_ODOMETRY_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES
+		const unsigned odometry_size = Compact ? morpheus_compact_odometry::PayloadSize + 5 : MAVLINK_MSG_ID_ODOMETRY_LEN;
+		return _vehicle_odometry_sub.advertised() ? odometry_size + MAVLINK_NUM_NON_PAYLOAD_BYTES
 		       + (_arm_state_sub.advertised() ? 60 + 5 + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0) : 0;
 	}
 
@@ -171,7 +173,15 @@ private:
 
 			msg.quality = odom.quality;
 
-			mavlink_msg_odometry_send_struct(_mavlink->get_channel(), &msg);
+			if (Compact) {
+				mavlink_v2_extension_t extension{};
+				extension.message_type = morpheus_compact_odometry::MessageType;
+				morpheus_compact_odometry::encode(extension.payload, msg);
+				mavlink_msg_v2_extension_send_struct(_mavlink->get_channel(), &extension);
+
+			} else {
+				mavlink_msg_odometry_send_struct(_mavlink->get_channel(), &msg);
+			}
 			send_arm_prediction(odom);
 
 			return true;

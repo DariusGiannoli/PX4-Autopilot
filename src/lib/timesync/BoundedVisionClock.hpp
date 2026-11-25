@@ -34,11 +34,24 @@ public:
 		bool ready{false};
 	};
 
+	// Optional diagnostic result from the same clock query used for the decision.
+	enum class ConversionResult : uint8_t {
+		Accepted, ClockNotReady, InvalidRemoteStamp, TimestampArithmetic,
+		CaptureUncertaintyExceeded, FutureCapture
+	};
+	struct ConversionTrace {
+		Status clock{};
+		uint64_t timestamp_us{0};
+		uint64_t capture_uncertainty_us{UINT64_MAX};
+		ConversionResult result{ConversionResult::ClockNotReady};
+	};
+
 	bool update(uint64_t now_us, int64_t remote_ns, int64_t originated_ns);
 
 	Status status(uint64_t now_us);
 
-	bool convert(uint64_t remote_us, uint64_t now_us, uint64_t &converted_us, uint64_t &uncertainty_us);
+	bool convert(uint64_t remote_us, uint64_t now_us, uint64_t &converted_us, uint64_t &uncertainty_us,
+		     ConversionTrace *trace = nullptr);
 
 private:
 	struct Sample { uint64_t at_us{0}; int64_t low{0}; int64_t high{0}; };
