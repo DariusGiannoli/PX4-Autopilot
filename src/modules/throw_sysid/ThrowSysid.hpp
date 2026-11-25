@@ -109,6 +109,9 @@ private:
 
 	bool _armed{false};
 	bool _landed{true};
+	bool _flight_state_allows_pulses{false};
+	uint8_t _nav_state{0};
+	uint8_t _start_nav_state{0};
 	bool _pos_z_valid{false};
 	float _z{0.f};
 	float _z_start{0.f};

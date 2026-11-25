@@ -19,3 +19,4 @@ uint8 END_RATE = 3          # body rate above THRSID_RATE_MAX
 uint8 END_DISARMED = 4
 uint8 END_CANCEL = 5        # 'throw_sysid cancel'
 uint8 END_TILT = 6          # tilt above THRSID_TILT_MAX
+uint8 END_FLIGHT_STATE = 7  # landed, landing, failsafe, or navigation mode changed

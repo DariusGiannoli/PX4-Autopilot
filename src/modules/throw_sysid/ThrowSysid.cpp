@@ -65,6 +65,8 @@ static const char *end_name(uint8_t r)
 
 	case throw_sysid_status_s::END_TILT: return "tilt limit";
 
+	case throw_sysid_status_s::END_FLIGHT_STATE: return "flight state changed";
+
 	default: return "?";
 	}
 }
@@ -107,6 +109,7 @@ void ThrowSysid::start(hrt_abstime now)
 	_pulses.configure(amp, _param_slot.get(), _param_rate_lim.get());
 	_end_reason = throw_sysid_status_s::END_NONE;
 	_start = now;
+	_start_nav_state = _nav_state;
 	_z_start = _z;
 	_phase = throw_sysid_status_s::PHASE_EXCITE;
 	PX4_INFO("EXCITE");
@@ -156,6 +159,13 @@ void ThrowSysid::Run()
 
 	if (_vehicle_status_sub.update(&vehicle_status)) {
 		_armed = (vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED);
+		_nav_state = vehicle_status.nav_state;
+		_flight_state_allows_pulses = !vehicle_status.failsafe
+				&& _nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_RTL
+				&& _nav_state != vehicle_status_s::NAVIGATION_STATE_DESCEND
+				&& _nav_state != vehicle_status_s::NAVIGATION_STATE_TERMINATION
+				&& _nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_LAND
+				&& _nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_PRECLAND;
 	}
 
 	vehicle_land_detected_s land;
@@ -206,8 +216,8 @@ void ThrowSysid::Run()
 		if (_phase == throw_sysid_status_s::PHASE_EXCITE) {
 			PX4_WARN("already running");
 
-		} else if (!_armed || _landed || !_base_valid) {
-			PX4_WARN("take off and hover first");
+		} else if (!_armed || _landed || !_base_valid || !_flight_state_allows_pulses) {
+			PX4_WARN("pulses require armed hover outside landing or failsafe");
 
 		} else {
 			start(now);
@@ -223,6 +233,9 @@ void ThrowSysid::Run()
 
 		} else if (!_armed) {
 			finish(throw_sysid_status_s::END_DISARMED, now);
+
+		} else if (_landed || !_flight_state_allows_pulses || _nav_state != _start_nav_state) {
+			finish(throw_sysid_status_s::END_FLIGHT_STATE, now);
 
 		} else if (fabsf(av.xyz[0]) > rate_max || fabsf(av.xyz[1]) > rate_max || fabsf(av.xyz[2]) > rate_max) {
 			finish(throw_sysid_status_s::END_RATE, now);
