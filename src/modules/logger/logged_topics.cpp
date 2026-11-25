@@ -174,6 +174,7 @@ void LoggedTopics::add_default_topics()
 	add_optional_topic_multi("estimator_sensor_bias", 1000);
 	add_optional_topic_multi("estimator_status", 200);
 	add_optional_topic_multi("morpheus_estimator_health", 20);
+	add_topic_multi("morpheus_vision_ingress", 0, 3);
 	add_optional_topic_multi("estimator_status_flags", 10);
 	add_optional_topic_multi("yaw_estimator_status", 1000);
 

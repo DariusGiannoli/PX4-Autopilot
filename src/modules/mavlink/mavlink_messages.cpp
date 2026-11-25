@@ -329,7 +329,8 @@ static const StreamListItem streams_list[] = {
 	create_stream_list_item<MavlinkStreamMagCalReport>(),
 #endif // MAG_CAL_REPORT_HPP
 #if defined(ODOMETRY_HPP)
-	create_stream_list_item<MavlinkStreamOdometry>(),
+	create_stream_list_item<MavlinkStreamOdometry<false>>(),
+	create_stream_list_item<MavlinkStreamOdometry<true>>(),
 #endif // ODOMETRY_HPP
 #if defined(ESTIMATOR_STATUS_HPP)
 	create_stream_list_item<MavlinkStreamEstimatorStatus>(),

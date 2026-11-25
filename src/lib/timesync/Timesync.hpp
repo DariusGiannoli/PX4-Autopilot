@@ -101,10 +101,11 @@ public:
 		    bool vision_clock_peer = false);
 
 	/** Private external-vision path: never substitute receipt time when unready. */
-	bool sync_vision_stamp(uint64_t usec, uint64_t now_us, uint64_t &mapped_us)
+	bool sync_vision_stamp(uint64_t usec, uint64_t now_us, uint64_t &mapped_us,
+			       BoundedVisionClock::ConversionTrace *trace = nullptr)
 	{
 		uint64_t uncertainty_us = 0;
-		return _vision_clock.convert(usec, now_us, mapped_us, uncertainty_us);
+		return _vision_clock.convert(usec, now_us, mapped_us, uncertainty_us, trace);
 	}
 
 	BoundedVisionClock::Status vision_clock_status(uint64_t now_us) { return _vision_clock.status(now_us); }

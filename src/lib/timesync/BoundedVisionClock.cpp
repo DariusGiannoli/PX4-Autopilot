@@ -135,26 +135,45 @@ BoundedVisionClock::Status BoundedVisionClock::status(uint64_t now_us)
 	return result;
 }
 
-bool BoundedVisionClock::convert(uint64_t remote_us, uint64_t now_us, uint64_t &converted_us, uint64_t &uncertainty_us)
+bool BoundedVisionClock::convert(uint64_t remote_us, uint64_t now_us, uint64_t &converted_us, uint64_t &uncertainty_us,
+		ConversionTrace *trace)
 {
 	const Status current = status(now_us);
 
-	if (!current.ready || remote_us == 0 || remote_us > static_cast<uint64_t>(INT64_MAX)) { return false; }
+	if (trace) {
+		*trace = {};
+		trace->clock = current;
+		trace->timestamp_us = now_us;
+	}
+
+	const auto finish = [trace](ConversionResult result) {
+		if (trace) { trace->result = result; }
+
+		return result == ConversionResult::Accepted;
+	};
+
+	if (!current.ready) { return finish(ConversionResult::ClockNotReady); }
+
+	if (remote_us == 0 || remote_us > static_cast<uint64_t>(INT64_MAX)) {
+		return finish(ConversionResult::InvalidRemoteStamp);
+	}
 
 	const int64_t remote = static_cast<int64_t>(remote_us);
 
 	if ((current.offset_us > 0 && remote > INT64_MAX - current.offset_us)
-	    || (current.offset_us < 0 && remote < -current.offset_us)) { return false; }
+	    || (current.offset_us < 0 && remote < -current.offset_us)) {
+		return finish(ConversionResult::TimestampArithmetic);
+	}
 
 	const int64_t candidate = remote + current.offset_us;
 
-	if (candidate <= 0) { return false; }
+	if (candidate <= 0) { return finish(ConversionResult::InvalidRemoteStamp); }
 
 	const uint64_t mapped = static_cast<uint64_t>(candidate);
 	const uint64_t distance = mapped > now_us ? mapped - now_us : now_us - mapped;
 	// The offset interval was evaluated at receipt time. Cover drift back to
 	// capture time, including the unknown location inside the current bound.
-	if (distance > UINT64_MAX - current.uncertainty_us) { return false; }
+	if (distance > UINT64_MAX - current.uncertainty_us) { return finish(ConversionResult::TimestampArithmetic); }
 
 	// Solve e <= u + rho*(distance+e), rather than assuming the unknown
 	// capture instant equals the centre. At100ppm, rho/(1-rho)=1/9999.
@@ -162,9 +181,12 @@ bool BoundedVisionClock::convert(uint64_t remote_us, uint64_t now_us, uint64_t &
 	const uint64_t capture_margin = lookback / 9999 + (lookback % 9999 != 0);
 	uncertainty_us = current.uncertainty_us + capture_margin;
 
-	if (uncertainty_us > MaximumUncertaintyUs
-	    || (mapped > now_us && mapped - now_us > uncertainty_us)) { return false; }
+	if (trace) { trace->capture_uncertainty_us = uncertainty_us; }
+
+	if (uncertainty_us > MaximumUncertaintyUs) { return finish(ConversionResult::CaptureUncertaintyExceeded); }
+
+	if (mapped > now_us && mapped - now_us > uncertainty_us) { return finish(ConversionResult::FutureCapture); }
 
 	converted_us = mapped;
-	return true;
+	return finish(ConversionResult::Accepted);
 }

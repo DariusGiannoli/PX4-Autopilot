@@ -38,6 +38,7 @@ include(px4_list_make_absolute)
 
 set(msg_files
 	MorpheusEstimatorHealth.msg
+	MorpheusVisionIngress.msg
 	ActionRequest.msg
 	ActuatorArmed.msg
 	ActuatorControlsStatus.msg

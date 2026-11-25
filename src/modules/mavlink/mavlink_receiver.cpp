@@ -61,6 +61,7 @@
 #include "mavlink_command_sender.h"
 #include "mavlink_main.h"
 #include "mavlink_receiver.h"
+#include "MorpheusCompactVision.hpp"
 
 #include <lib/drivers/device/Device.hpp> // For DeviceId union
 
@@ -183,6 +184,10 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 
 	case MAVLINK_MSG_ID_ODOMETRY:
 		handle_message_odometry(msg);
+		break;
+
+	case MAVLINK_MSG_ID_V2_EXTENSION:
+		handle_message_compact_vision(msg);
 		break;
 
 	case MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN:
@@ -1302,13 +1307,45 @@ MavlinkReceiver::handle_message_odometry(mavlink_message_t *msg)
 {
 	mavlink_odometry_t odom_in;
 	mavlink_msg_odometry_decode(msg, &odom_in);
+	handle_odometry_sample(msg, odom_in);
+}
 
+void
+MavlinkReceiver::handle_message_compact_vision(mavlink_message_t *msg)
+{
+	mavlink_odometry_t odom_in;
+	if (morpheus_compact_vision::decode(*msg, mavlink_system.sysid, mavlink_system.compid, odom_in)) {
+		handle_odometry_sample(msg, odom_in);
+	}
+}
+
+void
+MavlinkReceiver::handle_odometry_sample(const mavlink_message_t *msg, const mavlink_odometry_t &odom_in)
+{
 	// fill vehicle_odometry from Mavlink ODOMETRY
 	vehicle_odometry_s odom{vehicle_odometry_empty};
 
 	if (MorpheusVisionTiming::strict_input(msg->sysid, msg->compid, odom_in.estimator_type,
 					     odom_in.frame_id, odom_in.child_frame_id)) {
-		if (!_mavlink_timesync.sync_vision_stamp(odom_in.time_usec, odom.timestamp_sample)) {
+		BoundedVisionClock::ConversionTrace trace;
+		const bool accepted = _mavlink_timesync.sync_vision_stamp(odom_in.time_usec, odom.timestamp_sample, &trace);
+		morpheus_vision_ingress_s ingress{};
+		ingress.timestamp = trace.timestamp_us;
+		ingress.remote_timestamp_us = odom_in.time_usec;
+		ingress.mapped_timestamp_us = accepted ? odom.timestamp_sample : 0;
+		ingress.clock_uncertainty_us = trace.clock.uncertainty_us;
+		ingress.capture_uncertainty_us = trace.capture_uncertainty_us;
+		ingress.clock_age_us = trace.clock.age_us;
+		ingress.clock_generation = trace.clock.generation;
+		ingress.clock_samples = trace.clock.samples;
+		ingress.clock_fault = static_cast<uint8_t>(trace.clock.fault);
+		ingress.decision = static_cast<uint8_t>(trace.result);
+		ingress.clock_ready = trace.clock.ready;
+		ingress.mavlink_sequence = msg->seq;
+		ingress.mavlink_channel = _mavlink.get_channel();
+		_vision_ingress_pub.publish(ingress);
+
+		if (!accepted) {
 			// Unqualified/stale clock: do not relabel delayed vision as receipt time.
 			return;
 		}
